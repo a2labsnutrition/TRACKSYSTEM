@@ -381,6 +381,8 @@ export class SupabaseIngestStore implements IngestStore {
           match_keys: e.matchKeys,
           request: e.request,
           response: e.response,
+          attempts: e.status === "pending" ? 0 : 1,
+          next_retry_at: e.status === "failed" ? new Date(Date.now() + 10 * 60_000).toISOString() : null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "workspace_id,event_name,event_id" },
