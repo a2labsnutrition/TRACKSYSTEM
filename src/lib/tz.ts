@@ -143,3 +143,11 @@ export function resolvePeriod(
     prevTo: addDays(f, -1),
   };
 }
+
+/** Instante UTC (ISO) do início do dia local `iso` no fuso `timeZone`. */
+export function localDayStartUtc(iso: string, timeZone: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const guess = new Date(Date.UTC(y, m - 1, d, 12));
+  const offset = tzOffsetMinutes(timeZone, guess);
+  return new Date(Date.UTC(y, m - 1, d) - offset * 60000).toISOString();
+}
