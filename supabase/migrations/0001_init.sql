@@ -633,8 +633,13 @@ begin
   end loop;
 end $$;
 
--- Segredos: membros veem metadados, mas a coluna criptografada só é lida no servidor.
-revoke select (encrypted_secret) on public.integration_credentials from authenticated;
+-- Segredos: o navegador nunca lê a coluna criptografada nem o hash de busca.
+-- (REVOKE de coluna não vale quando há SELECT na tabela inteira, que o Supabase
+-- concede por padrão — por isso revoga tudo e concede só as colunas seguras.)
+-- Escritas de credenciais passam sempre pelo servidor (service role).
+revoke all on public.integration_credentials from anon, authenticated;
+grant select (id, workspace_id, provider, label, meta, expires_at, status, last_checked_at, last_error, created_at, updated_at)
+  on public.integration_credentials to authenticated;
 
 alter table public.workspaces enable row level security;
 drop policy if exists workspaces_member_select on public.workspaces;

@@ -27,8 +27,8 @@ export function PeriodPicker({ current, from, to }: { current: PeriodKey; from: 
   };
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-2", pending && "opacity-60")}>
-      <div className="flex overflow-x-auto rounded-lg border border-border bg-panel p-0.5">
+    <div className={cn("flex min-w-0 max-w-full flex-wrap items-center gap-2", pending && "opacity-60")}>
+      <div className="flex max-w-full overflow-x-auto rounded-lg border border-border bg-panel p-0.5">
         {KEYS.map((k) => (
           <button
             key={k}

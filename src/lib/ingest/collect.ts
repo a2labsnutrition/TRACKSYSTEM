@@ -107,7 +107,8 @@ export async function processCollect(
       };
   await store.upsertSession(workspaceId, session);
 
-  const isMetaEvent = BROWSER_EVENTS_TO_CAPI.has(p.event as CapiEventName) && Boolean(site.pixelId);
+  // no_capi: o Pixel do próprio usuário já disparou este evento sem event_id (evita duplicar).
+  const isMetaEvent = BROWSER_EVENTS_TO_CAPI.has(p.event as CapiEventName) && Boolean(site.pixelId) && p.props?.no_capi !== true;
   const inserted = await store.insertEvent(workspaceId, {
     siteId: site.id,
     eventName: p.event,

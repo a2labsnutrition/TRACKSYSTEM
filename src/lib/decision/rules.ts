@@ -1,4 +1,5 @@
 import { deriveMetrics, type MetaTotals } from "@/lib/metrics/compute";
+import { fmtBRL, fmtDec, fmtPct } from "@/lib/format";
 import { safeDiv } from "@/lib/utils";
 
 /**
@@ -110,7 +111,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "gasto_sem_venda",
       severity: "critico",
-      message: `Gastou R$ ${w7.meta.spend.toFixed(2)} em 7 dias sem venda (limite: ${c.killSpendMultiple}× CPA alvo = R$ ${killThreshold.toFixed(2)}).`,
+      message: `Gastou ${fmtBRL(w7.meta.spend)} em 7 dias sem venda (limite: ${c.killSpendMultiple}× CPA alvo = ${fmtBRL(killThreshold)}).`,
       evidence: { spend7d: w7.meta.spend, killThreshold, purchases7d: 0 },
     });
   }
@@ -120,7 +121,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "connect_rate_baixo",
       severity: d7.connectRate < 0.6 ? "critico" : "atencao",
-      message: `Connect rate ${(d7.connectRate * 100).toFixed(0)}% < ${(c.connectRateMin * 100).toFixed(0)}%: cliques se perdem antes da página carregar.`,
+      message: `Connect rate ${fmtPct(d7.connectRate, 0)} < ${fmtPct(c.connectRateMin, 0)}: cliques se perdem antes da página carregar.`,
       evidence: { connectRate: d7.connectRate, linkClicks: w7.meta.linkClicks, lpv: w7.meta.landingPageViews },
     });
   }
@@ -130,7 +131,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "frequencia_alta",
       severity: "atencao",
-      message: `Frequência ${d3.frequency.toFixed(1)} > ${c.frequencyMax} nos últimos 3 dias: risco de saturação/fadiga.`,
+      message: `Frequência ${fmtDec(d3.frequency, 1)} > ${fmtDec(c.frequencyMax, 1)} nos últimos 3 dias: risco de saturação/fadiga.`,
       evidence: { frequency3d: d3.frequency },
     });
   }
@@ -140,7 +141,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "ctr_baixo",
       severity: "atencao",
-      message: `CTR de link ${(d7.ctrLink * 100).toFixed(2)}% abaixo de 0,8%: gancho/criativo não está gerando clique.`,
+      message: `CTR de link ${fmtPct(d7.ctrLink, 2)} abaixo de 0,8%: gancho/criativo não está gerando clique.`,
       evidence: { ctrLink: d7.ctrLink, impressions: w7.meta.impressions },
     });
   }
@@ -150,7 +151,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "hook_baixo",
       severity: "atencao",
-      message: `Hook rate ${(d7.hookRate * 100).toFixed(0)}% < 20%: os 3 primeiros segundos não param a rolagem.`,
+      message: `Hook rate ${fmtPct(d7.hookRate, 0)} < 20%: os 3 primeiros segundos não param a rolagem.`,
       evidence: { hookRate: d7.hookRate },
     });
   }
@@ -160,7 +161,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "pagina_nao_converte",
       severity: "atencao",
-      message: `Só ${(d7.checkoutRate * 100).toFixed(1)}% das visitas iniciam checkout: página/oferta não convence.`,
+      message: `Só ${fmtPct(d7.checkoutRate, 1)} das visitas iniciam checkout: página/oferta não convence.`,
       evidence: { checkoutRate: d7.checkoutRate, lpv: w7.meta.landingPageViews },
     });
   }
@@ -170,22 +171,31 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "cpa_acima_max",
       severity: "critico",
-      message: `CPA real 3d R$ ${cpa3.toFixed(2)} = ${(cpa3 / c.targetCpa).toFixed(1)}× a meta (máx. tolerável R$ ${c.maxCpa.toFixed(2)}).`,
+      message: `CPA real 3d ${fmtBRL(cpa3)} = ${fmtDec(cpa3 / c.targetCpa, 1)}× a meta (máx. tolerável ${fmtBRL(c.maxCpa)}).`,
       evidence: { cpa3d: cpa3, targetCpa: c.targetCpa, maxCpa: c.maxCpa },
     });
   } else if (cpa7 != null && purchases7 >= 3 && cpa7 > c.targetCpa) {
     signals.push({
       code: "cpa_acima_alvo",
       severity: "atencao",
-      message: `CPA real 7d R$ ${cpa7.toFixed(2)} acima do alvo R$ ${c.targetCpa.toFixed(2)}.`,
+      message: `CPA real 7d ${fmtBRL(cpa7)} acima do alvo ${fmtBRL(c.targetCpa)}.`,
       evidence: { cpa7d: cpa7, targetCpa: c.targetCpa },
     });
   } else if (cpa7 != null && purchases7 >= c.minPurchasesToScale && cpa7 <= c.targetCpa) {
     signals.push({
       code: "cpa_saudavel",
       severity: "positivo",
-      message: `CPA real 7d R$ ${cpa7.toFixed(2)} dentro do alvo (R$ ${c.targetCpa.toFixed(2)}) com ${purchases7} vendas.`,
+      message: `CPA real 7d ${fmtBRL(cpa7)} dentro do alvo (${fmtBRL(c.targetCpa)}) com ${purchases7} vendas.`,
       evidence: { cpa7d: cpa7, purchases7d: purchases7 },
+    });
+  }
+
+  if (cpa7 != null && purchases7 > 0 && purchases7 < 3 && cpa7 > c.maxCpa) {
+    signals.push({
+      code: "cpa_alto_pouco_volume",
+      severity: "atencao",
+      message: `Só ${purchases7} venda(s) em 7 dias com CPA ${fmtBRL(cpa7)} (máx. ${fmtBRL(c.maxCpa)}): ainda pouco volume, mas a tendência é ruim.`,
+      evidence: { cpa7d: cpa7, purchases7d: purchases7, maxCpa: c.maxCpa },
     });
   }
 
@@ -193,7 +203,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     signals.push({
       code: "roas_abaixo_min",
       severity: "atencao",
-      message: `ROAS real 7d ${roas7.toFixed(2)}x abaixo do mínimo ${c.minRoas.toFixed(2)}x.`,
+      message: `ROAS real 7d ${fmtDec(roas7, 2)}x abaixo do mínimo ${fmtDec(c.minRoas, 2)}x.`,
       evidence: { roas7d: roas7, minRoas: c.minRoas },
     });
   }
@@ -208,7 +218,10 @@ export function evaluate(input: DecisionInput): DecisionResult {
   }
 
   // ---------------- Status ----------------
-  const hasKill = signals.some((s) => s.code === "gasto_sem_venda" || s.code === "cpa_acima_max");
+  // Pausar: gasto sem venda, ou CPA acima do máximo tolerável sustentado (3 E 7 dias).
+  // CPA alto só nos últimos 3 dias => Otimizar (pode ser oscilação).
+  const sustainedHighCpa = signals.some((s) => s.code === "cpa_acima_max") && cpa7 != null && cpa7 > c.maxCpa;
+  const hasKill = signals.some((s) => s.code === "gasto_sem_venda") || sustainedHighCpa;
   const criticalTracking = !input.trackingOk;
 
   // Volume estatístico mínimo
@@ -227,7 +240,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
     status = "aguardar";
     confidence = "baixa";
     const spendLeft = Math.max(0, spendForVerdict - w7.meta.spend);
-    missingData = `Faltam ~${needClicks} cliques no link ou ~R$ ${spendLeft.toFixed(2)} de gasto (ou 3 vendas) para um veredito.`;
+    missingData = `Faltam ~${needClicks} cliques no link ou ~${fmtBRL(spendLeft)} de gasto (ou 3 vendas) para um veredito.`;
   } else if (
     cpa7 != null &&
     purchases7 >= c.minPurchasesToScale &&

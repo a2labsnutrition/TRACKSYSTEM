@@ -45,7 +45,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
       ) : null}
 
       {o.alerts.length ? (
-        <div className="mb-5 grid gap-2">
+        <div className="mb-5 grid grid-cols-1 gap-2">
           {o.alerts.slice(0, 5).map((a, i) => {
             const Icon = a.severity === "critico" ? AlertOctagon : a.severity === "atencao" ? AlertTriangle : Info;
             return (
@@ -86,7 +86,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
         <Stat label="Vendas pagas" metric="purchases" value={fmtInt(cur.real.paidOrders)} current={cur.real.paidOrders} previous={prev.real.paidOrders} sub={`Meta: ${fmtInt(cur.meta.purchases)}`} />
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader
             title="Gasto × receita × lucro por dia"
@@ -137,7 +137,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
         </Card>
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader
             title="O que fazer agora"

@@ -364,7 +364,7 @@ export async function campaignDetail(repo: Repository, campaignId: string, perio
   ].map((step, i, arr) => ({ ...step, rate: i === 0 ? null : safeDiv(step.value, arr[i - 1].value) }));
 
   // Etapa com a pior taxa de passagem relativa a uma referência saudável
-  const BENCH: Record<string, number> = { linkClicks: 0.012, lpv: 0.75, ic: 0.08, generated: 0.5, paid: 0.6 };
+  const BENCH: Record<string, number> = { linkClicks: 0.01, lpv: 0.75, ic: 0.08, generated: 0.35, paid: 0.6 };
   let leak: { key: string; label: string; rate: number; bench: number } | null = null;
   for (const s of funnel.slice(1)) {
     if (s.rate == null || !BENCH[s.key]) continue;

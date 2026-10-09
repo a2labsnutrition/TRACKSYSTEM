@@ -86,3 +86,11 @@ export function delta(current: number | null, previous: number | null): number |
   if (current == null || previous == null || previous === 0) return null;
   return (current - previous) / Math.abs(previous);
 }
+
+const compact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
+
+/** Eixos de gráfico: 1.400 -> "1,4 mil" */
+export function fmtCompact(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return DASH;
+  return Math.abs(v) < 1000 ? fmtInt(v) : compact.format(v);
+}

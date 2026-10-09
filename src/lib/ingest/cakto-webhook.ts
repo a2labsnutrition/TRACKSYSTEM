@@ -72,8 +72,21 @@ export async function processCaktoWebhook(
       body: { ok: false, error: "Segredo do webhook inválido. Confira o segredo copiado da Cakto em Conexões → Cakto." },
     };
   }
-  const workspaceId = ws.workspaceId;
+  return ingestTrustedCaktoEvent(store, ws.workspaceId, body, headers, opts);
+}
 
+/**
+ * Grava e processa um evento já autenticado (webhook validado ou pedido vindo
+ * da API da Cakto na conciliação). Idempotente pela chave do evento.
+ */
+export async function ingestTrustedCaktoEvent(
+  store: IngestStore,
+  workspaceId: string,
+  body: unknown,
+  headers: Record<string, string>,
+  opts: { sender?: CapiSender; windowMinutes?: number } = {},
+): Promise<WebhookResult> {
+  const parsed = parseCaktoWebhook(body);
   const raw = await store.insertRawCakto({
     workspaceId,
     dedupeKey: parsed.dedupeKey,
@@ -85,7 +98,28 @@ export async function processCaktoWebhook(
     warnings: parsed.warnings,
   });
   if (!raw.inserted && raw.alreadyProcessed) return { status: 200, body: { ok: true, duplicate: true } };
+  return applyCaktoEvent(store, workspaceId, parsed, raw.id!, opts);
+}
 
+/** Reprocessa um evento bruto salvo (ex.: falhou antes por erro de banco). */
+export async function reprocessStoredCaktoEvent(
+  store: IngestStore,
+  workspaceId: string,
+  rawId: string,
+  payload: unknown,
+  opts: { sender?: CapiSender; windowMinutes?: number } = {},
+): Promise<WebhookResult> {
+  return applyCaktoEvent(store, workspaceId, parseCaktoWebhook(payload), rawId, opts);
+}
+
+async function applyCaktoEvent(
+  store: IngestStore,
+  workspaceId: string,
+  parsed: ReturnType<typeof parseCaktoWebhook>,
+  rawId: string,
+  opts: { sender?: CapiSender; windowMinutes?: number },
+): Promise<WebhookResult> {
+  const raw = { id: rawId };
   try {
     if (parsed.kind === "test" || parsed.kind === "unknown" || parsed.kind === "checkout_started") {
       await store.markRawProcessed(raw.id!, null);

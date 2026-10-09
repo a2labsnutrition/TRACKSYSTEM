@@ -48,7 +48,7 @@ const PROFILES: Profile[] = [
 
 export const DEMO_PRODUCTS: Product[] = [
   { id: "p1", name: "EmagrecePro (curso)", price: 97, netPerSale: 89.5, targetCpa: 45, maxCpa: 70, minRoas: 1.4, caktoProductIds: ["demo_prod_1"] },
-  { id: "p2", name: "Receitas Fit (e-book)", price: 47, netPerSale: 43.3, targetCpa: 20, maxCpa: 32, minRoas: 1.4, caktoProductIds: ["demo_prod_2"] },
+  { id: "p2", name: "Receitas Fit (e-book)", price: 47, netPerSale: 43.3, targetCpa: 25, maxCpa: 38, minRoas: 1.2, caktoProductIds: ["demo_prod_2"] },
   { id: "p3", name: "Mentoria VIP", price: 497, netPerSale: 462, targetCpa: 220, maxCpa: 350, minRoas: 1.3, caktoProductIds: ["demo_prod_3"] },
 ];
 

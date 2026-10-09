@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, Columns3, Search } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import type { DecisionStatus } from "@/lib/decision/rules";
 import { fmtBRL, fmtDec, fmtInt, fmtPct, fmtRoas } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -82,31 +82,51 @@ const COLS: Record<ColKey, { label: string; num?: (r: CampaignTableRow) => numbe
 
 const DEFAULT_COLS: ColKey[] = ["spend", "revenue", "profit", "purchases", "cpa", "roas", "ctr", "connectRate", "frequency", "windows"];
 const STORAGE_KEY = "cc_campaign_cols";
+const COLS_EVENT = "cc-cols-change";
+
+function subscribeCols(cb: () => void) {
+  window.addEventListener(COLS_EVENT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(COLS_EVENT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+function readCols(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 const STATUS_ORDER: Record<DecisionStatus, number> = { pausar: 0, otimizar: 1, escalar: 2, manter: 3, aguardar: 4 };
 
 export function CampaignsTable({ rows, periodQuery }: { rows: CampaignTableRow[]; periodQuery: string }) {
-  const [cols, setCols] = useState<ColKey[]>(DEFAULT_COLS);
+  const colsRaw = useSyncExternalStore(subscribeCols, readCols, () => null);
+  const cols = useMemo<ColKey[]>(() => {
+    try {
+      const saved = JSON.parse(colsRaw ?? "null");
+      if (Array.isArray(saved)) return saved.filter((c): c is ColKey => c in COLS);
+    } catch {
+      /* ignora */
+    }
+    return DEFAULT_COLS;
+  }, [colsRaw]);
   const [showCols, setShowCols] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"" | DecisionStatus>("");
   const [onlyActive, setOnlyActive] = useState(true);
   const [sort, setSort] = useState<{ key: ColKey | "status" | "name"; dir: 1 | -1 }>({ key: "spend", dir: -1 });
 
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-      if (Array.isArray(saved)) setCols(saved.filter((c) => c in COLS));
-    } catch {
-      /* ignora */
-    }
-  }, []);
   const saveCols = (next: ColKey[]) => {
-    setCols(next);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       /* ignora */
     }
+    window.dispatchEvent(new Event(COLS_EVENT));
   };
 
   const filtered = useMemo(() => {
@@ -129,7 +149,7 @@ export function CampaignsTable({ rows, periodQuery }: { rows: CampaignTableRow[]
   }, [rows, q, status, onlyActive, sort]);
 
   const header = (key: ColKey | "status" | "name", label: string, sortable = true, right = true) => (
-    <Th className={cn(right && "text-right", sortable && "cursor-pointer select-none hover:text-text")} onClick={() => sortable && setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
+    <Th key={key} className={cn(right && "text-right", sortable && "cursor-pointer select-none hover:text-text")} onClick={() => sortable && setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
       <span className="inline-flex items-center gap-1">
         {label}
         {sort.key === key ? sort.dir === 1 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" /> : null}

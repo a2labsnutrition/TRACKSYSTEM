@@ -16,6 +16,10 @@ const STUB = `
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to authenticated;
   grant execute on function auth.uid() to authenticated;
+  -- Como no Supabase: privilégios padrão concedidos a anon/authenticated
+  grant usage on schema public to anon, authenticated;
+  alter default privileges in schema public grant all on tables to anon, authenticated;
+  alter default privileges in schema public grant all on sequences to anon, authenticated;
 `;
 
 async function setup() {
@@ -23,9 +27,6 @@ async function setup() {
   await db.exec(STUB);
   const dir = join(process.cwd(), "supabase/migrations");
   for (const f of readdirSync(dir).sort()) await db.exec(readFileSync(join(dir, f), "utf8"));
-  await db.exec(`grant usage on schema public to authenticated;
-    grant select, insert, update, delete on all tables in schema public to authenticated;
-    revoke select (encrypted_secret) on public.integration_credentials from authenticated;`);
   return db;
 }
 
@@ -61,5 +62,19 @@ describe("migrations SQL", () => {
     await db.exec(`set request.jwt.claim.sub = '${u1}';`);
     const mine = await db.query("select * from public.products");
     expect(mine.rows.length).toBe(1);
+  });
+
+  it("navegador não consegue ler o segredo criptografado", async () => {
+    const db = await setup();
+    const u1 = "00000000-0000-0000-0000-000000000001";
+    await db.exec(`set role authenticated; set request.jwt.claim.sub = '${u1}';`);
+    const ws = (await db.query<{ id: string }>("select public.create_workspace('WS') as id")).rows[0].id;
+    await db.exec("reset role;");
+    await db.query("insert into public.integration_credentials (workspace_id, provider, label, encrypted_secret) values ($1, 'meta', 'default', 'v1:x:y:z')", [ws]);
+    await db.exec(`set role authenticated; set request.jwt.claim.sub = '${u1}';`);
+    const ok = await db.query("select provider, expires_at from public.integration_credentials");
+    expect(ok.rows.length).toBe(1);
+    await expect(db.query("select encrypted_secret from public.integration_credentials")).rejects.toThrow(/permission denied/);
+    await expect(db.query("select * from public.integration_credentials")).rejects.toThrow(/permission denied/);
   });
 });

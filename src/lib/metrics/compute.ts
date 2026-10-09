@@ -111,7 +111,8 @@ export function deriveMetrics(t: MetaTotals): DerivedMetrics {
     checkoutRate: safeDiv(t.initiateCheckout, t.landingPageViews),
     purchaseRate: safeDiv(t.purchases, t.initiateCheckout),
     lpToPurchase: safeDiv(t.purchases, t.landingPageViews),
-    hookRate: safeDiv(t.video3s, t.impressions),
+    // Sem reproduções de vídeo (anúncio de imagem) => não se aplica
+    hookRate: t.video3s > 0 ? safeDiv(t.video3s, t.impressions) : null,
     holdRate: safeDiv(t.thruplay, t.video3s),
     costPerLpv: safeDiv(t.spend, t.landingPageViews),
     costPerCheckout: safeDiv(t.spend, t.initiateCheckout),

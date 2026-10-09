@@ -1,5 +1,5 @@
 import type { Repository } from "@/lib/data/repository";
-import type { CapiLog, TrackingEvent, TrackingHealth, UserNote, WorkspaceContext } from "@/lib/data/types";
+import type { CapiLog, Order, TrackingEvent, TrackingHealth, UserNote, WorkspaceContext } from "@/lib/data/types";
 import { getMemoryStore } from "@/lib/ingest/memory-store";
 import { addDays, dateIn, todayIn } from "@/lib/tz";
 import { DEMO_PRODUCTS, demoCampaignId, generateDemo, type DemoData } from "./generator";
@@ -58,7 +58,38 @@ export class DemoRepository implements Repository {
     );
   }
   async orders(q: { from: string; to: string }) {
-    return data().orders.filter((o) => {
+    // Pedidos reais recebidos neste servidor pelo webhook de teste (segredo demo) + fictícios
+    const mem = [...getMemoryStore().ws("demo").orders.values()].map<Order>((o) => ({
+      id: `mem_${o.externalId}`,
+      externalId: o.externalId,
+      productId: o.productId,
+      productName: o.productName,
+      status: o.status,
+      paymentMethod: o.paymentMethod,
+      grossAmount: o.grossAmount,
+      fees: o.fees,
+      netAmount: o.netAmount,
+      currency: o.currency,
+      coupon: o.coupon,
+      isOrderBump: o.isOrderBump,
+      isUpsell: o.isUpsell,
+      customerEmail: o.customerEmail,
+      createdAt: o.createdAt,
+      paidAt: o.paidAt,
+      refundedAt: o.refundedAt,
+      utmSource: o.utmSource,
+      utmMedium: o.utmMedium,
+      utmCampaign: o.utmCampaign,
+      utmContent: o.utmContent,
+      utmTerm: o.utmTerm,
+      campaignId: o.campaignId,
+      adsetId: o.adsetId,
+      adId: o.adId,
+      attributionMethod: o.attributionMethod,
+      attributionConfidence: o.attributionConfidence,
+      capiPurchaseSentAt: o.capiPurchaseSentAt,
+    }));
+    return [...mem, ...data().orders].filter((o) => {
       const d = dateIn(new Date(o.createdAt), TZ);
       return d >= q.from && d <= q.to;
     });

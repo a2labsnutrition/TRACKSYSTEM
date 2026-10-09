@@ -88,7 +88,6 @@ export async function graphRequest<T = unknown>(
   const url = graphUrl(path, { ...params, access_token: opts.accessToken }, opts.version);
 
   let attempt = 0;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     let res: Response;
     try {

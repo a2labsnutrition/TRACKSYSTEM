@@ -55,3 +55,18 @@ describe("motor de regras", () => {
     expect(c.maxCpa).toBe(85);
   });
 });
+
+describe("motor de regras — CPA alto", () => {
+  it("CPA alto só em 3 dias => otimizar; sustentado em 7 dias => pausar", () => {
+    const base = { last1d: w({}), trackingOk: true, config: cfg };
+    const osc = evaluate({ ...base, last3d: w({ spend: 180, linkClicks: 300, landingPageViews: 260 }, 2, 180), last7d: w({ spend: 300, linkClicks: 600, landingPageViews: 520 }, 6, 540) });
+    expect(osc.status).toBe("otimizar");
+    const sus = evaluate({ ...base, last3d: w({ spend: 180, linkClicks: 300, landingPageViews: 260 }, 2, 180), last7d: w({ spend: 500, linkClicks: 900, landingPageViews: 800 }, 5, 450) });
+    expect(sus.status).toBe("pausar");
+  });
+
+  it("mensagens em formato brasileiro", () => {
+    const r = evaluate({ last1d: w({}), last3d: w({ spend: 80 }), last7d: w({ spend: 120.5, linkClicks: 150, impressions: 10000, landingPageViews: 120 }), trackingOk: true, config: cfg });
+    expect(r.headline.replace(/\s/g, " ")).toContain("R$ 120,50");
+  });
+});

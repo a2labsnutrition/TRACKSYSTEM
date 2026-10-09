@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { fmtBRL, fmtDate, fmtDayShort } from "@/lib/format";
+import { fmtBRL, fmtCompact, fmtDate, fmtDayShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export interface SpendPoint {
@@ -53,7 +53,7 @@ export function SpendRevenueChart({ data, height = 280 }: { data: SpendPoint[]; 
           <ComposedChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
             <XAxis dataKey="date" tickFormatter={fmtDayShort} tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={16} />
-            <YAxis tickFormatter={(v) => fmtBRL(v, { compact: true }).replace("R$", "").trim()} tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
+            <YAxis tickFormatter={(v) => fmtCompact(v)} tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
             <Tooltip
               contentStyle={tooltipStyle}
               labelFormatter={(l) => fmtDate(String(l))}
