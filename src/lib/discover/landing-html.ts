@@ -1,3 +1,4 @@
+import { BUY_BUTTON } from "./markdown";
 import type { LandingContent, OfferContent } from "./schemas";
 
 /**
@@ -7,7 +8,8 @@ import type { LandingContent, OfferContent } from "./schemas";
  */
 
 export interface LandingHtmlInput {
-  landing: LandingContent;
+  /** Versão estruturada (IA) ou editada em markdown ("## Título" separa seções). */
+  landing: LandingContent | string;
   offer?: OfferContent | null;
   productName: string;
   checkoutUrl: string | null;
@@ -34,13 +36,18 @@ function safeUrl(v: string | null): string {
 
 function inline(s: string): string {
   return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(])\*(?!\s)(.+?)\*(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>")
+    .replace(/(^|[\s(])[*_](?![\s*_])(.+?)[*_](?=[\s).,!?:;]|$)/g, "$1<em>$2</em>")
     .replace(/\[([A-ZÀ-Ú0-9][^\]]{2,80})\]/g, '<mark class="ph">[$1]</mark>');
 }
 
-/** Markdown simples → HTML: parágrafos, **negrito**, *itálico*, listas "- " / "1. ", títulos "#". */
-export function miniMarkdown(md: string): string {
+/**
+ * Markdown simples → HTML (sempre escapado): parágrafos, **negrito**, *itálico*,
+ * `código`, blocos ```, listas "- " / "1. ", títulos "#" (# = h3 … #### = h6).
+ * Com `cta`, a linha "[BOTÃO DE COMPRA]" vira o botão de checkout.
+ */
+export function miniMarkdown(md: string, opts: { cta?: string } = {}): string {
   const out: string[] = [];
   let list: { tag: "ul" | "ol"; items: string[] } | null = null;
   let para: string[] = [];
@@ -52,8 +59,30 @@ export function miniMarkdown(md: string): string {
     if (list) out.push(`<${list.tag}>${list.items.map((i) => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`);
     list = null;
   };
+  let code: string[] | null = null;
   for (const raw of md.replace(/\r\n/g, "\n").split("\n")) {
     const line = raw.trim();
+    if (line.startsWith("```")) {
+      if (code) {
+        out.push(`<pre>${esc(code.join("\n"))}</pre>`);
+        code = null;
+      } else {
+        flushPara();
+        flushList();
+        code = [];
+      }
+      continue;
+    }
+    if (code) {
+      code.push(raw);
+      continue;
+    }
+    if (opts.cta && line === BUY_BUTTON) {
+      flushPara();
+      flushList();
+      out.push(opts.cta);
+      continue;
+    }
     const ul = /^[-*•]\s+(.*)$/.exec(line);
     const ol = /^\d+[.)]\s+(.*)$/.exec(line);
     const h = /^(#{1,4})\s+(.*)$/.exec(line);
@@ -63,7 +92,8 @@ export function miniMarkdown(md: string): string {
     } else if (h) {
       flushPara();
       flushList();
-      out.push(`<h3>${inline(h[2])}</h3>`);
+      const lvl = Math.min(6, 2 + h[1].length);
+      out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`);
     } else if (ul || ol) {
       flushPara();
       const tag = ul ? "ul" : "ol";
@@ -77,13 +107,41 @@ export function miniMarkdown(md: string): string {
       para.push(line);
     }
   }
+  if (code) out.push(`<pre>${esc(code.join("\n"))}</pre>`);
   flushPara();
   flushList();
   return out.join("\n");
 }
 
+const DEFAULT_PALETTE = { primaria: "#2563eb", fundo: "#ffffff", texto: "#111827", destaque: "#f59e0b" };
+
+/** Separa um markdown editado em seções pelo "## ". */
+export function splitMarkdownSections(md: string): Array<{ titulo: string; copy: string }> {
+  const out: Array<{ titulo: string; copy: string }> = [];
+  let cur: { titulo: string; lines: string[] } = { titulo: "", lines: [] };
+  for (const line of md.replace(/\r\n/g, "\n").split("\n")) {
+    const h = /^##\s+(.*)$/.exec(line.trim());
+    if (h) {
+      if (cur.titulo || cur.lines.some((x) => x.trim())) out.push({ titulo: cur.titulo, copy: cur.lines.join("\n") });
+      cur = { titulo: h[1], lines: [] };
+    } else cur.lines.push(line);
+  }
+  if (cur.titulo || cur.lines.some((x) => x.trim())) out.push({ titulo: cur.titulo, copy: cur.lines.join("\n") });
+  return out;
+}
+
 export function buildLandingHtml(i: LandingHtmlInput): string {
-  const l = i.landing;
+  const l: LandingContent =
+    typeof i.landing === "string"
+      ? {
+          tipo_pagina: "",
+          paleta: DEFAULT_PALETTE,
+          tipografia: "",
+          cta_texto: "Quero garantir o meu",
+          secoes: splitMarkdownSections(i.landing).map((x) => ({ titulo: x.titulo, objetivo: "", copy: x.copy, tem_botao_checkout: false })),
+          provas_a_coletar: [],
+        }
+      : i.landing;
   const c = {
     p: color(l.paleta.primaria, "#2563eb"),
     bg: color(l.paleta.fundo, "#ffffff"),
@@ -95,7 +153,7 @@ export function buildLandingHtml(i: LandingHtmlInput): string {
   const sections = l.secoes
     .map(
       (s, idx) =>
-        `<section class="s${idx % 2 ? " alt" : ""}"><div class="wrap">${idx === 0 ? `<h1>${inline(s.titulo)}</h1>` : `<h2>${inline(s.titulo)}</h2>`}\n${miniMarkdown(s.copy)}${s.tem_botao_checkout ? `\n${cta}` : ""}</div></section>`,
+        `<section class="s${idx % 2 ? " alt" : ""}"><div class="wrap">${!s.titulo ? "" : idx === 0 ? `<h1>${inline(s.titulo)}</h1>` : `<h2>${inline(s.titulo)}</h2>`}\n${miniMarkdown(s.copy, { cta })}${s.tem_botao_checkout ? `\n${cta}` : ""}</div></section>`,
     )
     .join("\n");
   const faq =

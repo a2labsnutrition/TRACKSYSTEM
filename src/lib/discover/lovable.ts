@@ -1,3 +1,4 @@
+import { BUY_BUTTON } from "./markdown";
 import type { LandingContent, OfferContent } from "./schemas";
 
 /**
@@ -10,7 +11,8 @@ import type { LandingContent, OfferContent } from "./schemas";
 export const LOVABLE_MAX_PROMPT = 50_000;
 
 export interface LovablePromptInput {
-  landing: LandingContent;
+  /** Versão estruturada (IA) ou editada em markdown. */
+  landing: LandingContent | string;
   offer?: OfferContent | null;
   productName: string;
   checkoutUrl: string | null;
@@ -21,7 +23,8 @@ export interface LovablePromptInput {
 const CHECKOUT_PLACEHOLDER = "[LINK DO CHECKOUT DA CAKTO]";
 
 export function buildLovablePrompt(i: LovablePromptInput): string {
-  const l = i.landing;
+  const md = typeof i.landing === "string" ? i.landing : null;
+  const l = typeof i.landing === "string" ? null : i.landing;
   const checkout = i.checkoutUrl?.trim() || CHECKOUT_PLACEHOLDER;
   const lines: string[] = [];
   lines.push(`Crie uma página de vendas (landing page de uma única página) em português do Brasil para o produto "${i.productName}".`);
@@ -41,21 +44,33 @@ export function buildLovablePrompt(i: LovablePromptInput): string {
     "4. Não invente depoimentos, números de alunos, faturamentos, prints ou selos. Onde o texto tiver marcadores entre colchetes (ex.: [DEPOIMENTO REAL DE ALUNO]), mantenha um bloco visível com o marcador para eu substituir depois.",
     "5. Mobile first (a maior parte do tráfego vem do celular), carregamento rápido, imagens com lazy loading, sem pop-ups de saída.",
     "6. Rodapé com nome do produto, links de Política de Privacidade e Termos de Uso e o aviso: \"Este site não faz parte do Facebook ou da Meta Platforms, Inc.\"",
-    "",
-    "## Visual",
-    `- Tipo de página: ${l.tipo_pagina}`,
-    `- Cores: primária ${l.paleta.primaria}, fundo ${l.paleta.fundo}, texto ${l.paleta.texto}, destaque ${l.paleta.destaque}`,
-    `- Tipografia: ${l.tipografia}`,
-    `- Texto dos botões de compra: "${l.cta_texto}"`,
-    "",
-    "## Seções (nesta ordem, com o texto exatamente como abaixo)",
   );
-  l.secoes.forEach((s, idx) => {
-    lines.push("", `### ${idx + 1}. ${s.titulo}`, `Objetivo: ${s.objetivo}`, "", s.copy.trim());
-    if (s.tem_botao_checkout) lines.push("", `[Botão de compra: <a href="${checkout}" data-track="checkout">${l.cta_texto}</a>]`);
-  });
+  if (l) {
+    lines.push(
+      "",
+      "## Visual",
+      `- Tipo de página: ${l.tipo_pagina}`,
+      `- Cores: primária ${l.paleta.primaria}, fundo ${l.paleta.fundo}, texto ${l.paleta.texto}, destaque ${l.paleta.destaque}`,
+      `- Tipografia: ${l.tipografia}`,
+      `- Texto dos botões de compra: "${l.cta_texto}"`,
+      "",
+      "## Seções (nesta ordem, com o texto exatamente como abaixo)",
+    );
+    l.secoes.forEach((s, idx) => {
+      lines.push("", `### ${idx + 1}. ${s.titulo}`, `Objetivo: ${s.objetivo}`, "", s.copy.trim());
+      if (s.tem_botao_checkout) lines.push("", `[Botão de compra: <a href="${checkout}" data-track="checkout">${l.cta_texto}</a>]`);
+    });
+  } else if (md) {
+    lines.push(
+      "",
+      "## Conteúdo (cada \"##\" é uma seção, nesta ordem, com o texto exatamente como abaixo)",
+      `Onde aparecer ${BUY_BUTTON}, coloque um botão de compra: <a href="${checkout}" data-track="checkout">…</a>.`,
+      "",
+      md.trim(),
+    );
+  }
   const o = i.offer;
-  if (o?.faq?.length && !l.secoes.some((s) => /faq|perguntas/i.test(s.titulo))) {
+  if (o?.faq?.length && !(l ? l.secoes.map((s) => s.titulo).join(" ") : md ?? "").match(/faq|perguntas/i)) {
     lines.push("", "### Perguntas frequentes (acordeão)");
     for (const f of o.faq) lines.push(`- **${f.pergunta}** ${f.resposta}`);
   }

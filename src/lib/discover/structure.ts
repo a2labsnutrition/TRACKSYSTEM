@@ -144,3 +144,24 @@ export function buildCampaignStructure(i: StructureInput): CampaignStructure {
     avisos,
   };
 }
+
+/**
+ * Passo a passo no Gerenciador de Anúncios. O sistema é consultivo: não cria nem
+ * altera campanhas no Meta — você monta seguindo estes passos.
+ */
+export function adsManagerSteps(s: CampaignStructure, opts: { pageUrl: string | null; pixelId: string | null }): string[] {
+  const c0 = s.teste.conjuntos[0];
+  return [
+    `Gerenciador de Anúncios → Criar → objetivo **Vendas**. Nome da campanha: \`${s.nomenclatura.campanha}\`.`,
+    "Na campanha, deixe o orçamento no nível do conjunto (ABO) — desligue o orçamento da campanha (Advantage+ campaign budget) durante o teste.",
+    `Conjunto: local da conversão **Site**, conjunto de dados/Pixel ${opts.pixelId ? `**${opts.pixelId}**` : "do seu site"} e evento **Compra**.`,
+    s.teste.orcamentoPorCriativo
+      ? `Orçamento diário por conjunto: o suficiente para cada criativo chegar a ~${fmtBRL(s.teste.orcamentoPorCriativo)} de gasto em poucos dias${s.teste.orcamentoDiario ? ` (seu total: ${fmtBRL(s.teste.orcamentoDiario)}/dia ÷ ${s.teste.conjuntos.length} conjuntos)` : ""}.`
+      : "Orçamento diário por conjunto: defina o preço do produto no kit para calcular.",
+    `Público: Brasil, 18–65, sem interesses (amplo); posicionamentos Advantage+. Nome do conjunto: \`${c0?.nome ?? "[produto]_[ângulo]_amplo"}\`.`,
+    `Anúncios: 3 por conjunto com os roteiros do kit; nomes no padrão (ex.: \`${c0?.anuncios[0] ?? s.nomenclatura.anuncio}\`).`,
+    `URL do site: ${opts.pageUrl ? `**${opts.pageUrl}**` : "a página publicada (com o script de tracking)"}. Em **Parâmetros de URL**, cole: \`${s.utms}\``,
+    "Duplique o conjunto para os outros ângulos, troque os criativos e os nomes, revise e publique.",
+    "Depois da 1ª sincronização (até 1 hora), vincule a campanha ao produto em Configurações → Produtos para o painel calcular CPA e decisões.",
+  ];
+}

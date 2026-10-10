@@ -8,6 +8,7 @@ import {
   Compass,
   FileText,
   Film,
+  Layers,
   LayoutDashboard,
   Megaphone,
   Menu,
@@ -28,12 +29,13 @@ const MAIN = [
   { href: "/vendas", label: "Vendas", icon: Receipt },
   { href: "/alertas", label: "Alertas", icon: Bell },
   { href: "/saude", label: "Saúde do tracking", icon: Activity },
+  { href: "/descobrir", label: "Descobrir & Criar", icon: Compass },
+  { href: "/kits", label: "Kits de campanha", icon: Layers },
   { href: "/conexoes", label: "Conexões", icon: Plug },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
 const SOON = [
-  { label: "Descobrir & Criar", icon: Compass, phase: "Fase 3" },
   { label: "Criativos (Flow)", icon: Film, phase: "Fase 4" },
   { label: "Estúdio de PDF", icon: FileText, phase: "Fase 4" },
 ];

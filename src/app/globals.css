@@ -68,3 +68,83 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--primary) 35%, transparent);
 }
+
+/* Texto em markdown simples (kits do Descobrir & Criar) */
+.md {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre {
+  margin: 0 0 0.75rem;
+}
+.md ul,
+.md ol {
+  padding-left: 1.25rem;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md li {
+  margin: 0.15rem 0;
+}
+.md h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.md h4,
+.md h5,
+.md h6 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.md em {
+  color: var(--muted);
+}
+.md code,
+.md pre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background: var(--panel-2);
+  border-radius: 0.375rem;
+}
+.md code {
+  padding: 0.1rem 0.3rem;
+}
+.md pre {
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+.md mark.ph {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+  border-radius: 0.25rem;
+  padding: 0 0.2rem;
+}
+.md .cta-wrap {
+  margin: 0.5rem 0 1rem;
+}
+.md .cta {
+  display: inline-block;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: #fff;
+  padding: 0.35rem 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}

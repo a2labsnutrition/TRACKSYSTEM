@@ -100,8 +100,9 @@ export interface KitContext {
   subnicheSlug: string | null;
   inputs: KitInputs;
   refs: AdReference[];
-  plan?: PlanContent | null;
-  offer?: OfferContent | null;
+  /** Estruturado (IA) ou markdown (editado pelo usuário). */
+  plan?: PlanContent | string | null;
+  offer?: OfferContent | string | null;
 }
 
 function kitPayload(k: KitContext, extra: Record<string, unknown> = {}) {
@@ -166,7 +167,7 @@ export async function generateScripts(k: KitContext, angles: string[]): Promise<
         schema: AngleScriptsSchema,
         system: DISCOVER_SYSTEM,
         maxTokens: 10000,
-        user: `Escreva os criativos para o ângulo "${angulo}": no mínimo 10 ganchos diferentes, 3 roteiros (15s, 30s e 60s) em formatos variados (UGC, talking head, demonstração, storytelling, depoimento) com texto principal, título, descrição e a hipótese de teste de cada um, e 3 a 5 prompts de cena para gerar vídeo/imagem no Google Flow (em inglês, com proporção 9:16, 1:1 ou 4:5).\n${kitPayload({ ...k, plan: null }, { angulo, oferta_resumo: k.offer ? { nome: k.offer.nome, promessa: k.offer.promessa_principal, preco: k.offer.preco } : null })}`,
+        user: `Escreva os criativos para o ângulo "${angulo}": no mínimo 10 ganchos diferentes, 3 roteiros (15s, 30s e 60s) em formatos variados (UGC, talking head, demonstração, storytelling, depoimento) com texto principal, título, descrição e a hipótese de teste de cada um, e 3 a 5 prompts de cena para gerar vídeo/imagem no Google Flow (em inglês, com proporção 9:16, 1:1 ou 4:5).\n${kitPayload({ ...k, plan: null }, { angulo, oferta_resumo: !k.offer ? null : typeof k.offer === "string" ? k.offer.slice(0, 3000) : { nome: k.offer.nome, promessa: k.offer.promessa_principal, preco: k.offer.preco } })}`,
       }),
     ),
   );
