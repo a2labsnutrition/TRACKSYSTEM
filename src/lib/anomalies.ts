@@ -203,9 +203,9 @@ export function detectAnomalies(i: AnomalyInput): AnomalyCheck[] {
         status: isAnomaly ? "anomalia" : "normal",
         severity: hours > 24 ? "critico" : isAnomaly ? "atencao" : "info",
         detail: isAnomaly
-          ? `Último sync há ${fmtDec(hours, 0)} h. Os números de gasto podem estar desatualizados — não decida orçamento com eles.`
+          ? `Último sync há ${fmtDec(hours, 0)} h. Os números de gasto podem estar desatualizados — não decida orçamento com eles. Abrir o painel inicia uma sincronização; recarregue em ~1 min.`
           : `Último sync há ${fmtDec(hours, 1)} h.`,
-        method: "anomalia se o último sync tiver mais de 6 h (o cron roda a cada hora)",
+        method: "anomalia se o último sync tiver mais de 6 h (o painel sincroniza ao ser aberto e o agendamento roda 1×/dia)",
         evidence: { hoursSinceSync: round(hours, 1) },
         href: "/conexoes",
       });

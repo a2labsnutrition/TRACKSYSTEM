@@ -8,8 +8,9 @@ export const env = {
   defaultTimezone: process.env.DEFAULT_TIMEZONE ?? "America/Cuiaba",
 
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  // Aceita também os nomes das chaves novas do Supabase (publishable/secret)
+  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "",
 
   encryptionKey: process.env.ENCRYPTION_KEY ?? "",
   cronSecret: process.env.CRON_SECRET ?? "",

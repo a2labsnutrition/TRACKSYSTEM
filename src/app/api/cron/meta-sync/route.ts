@@ -11,8 +11,10 @@ export const maxDuration = 60;
 
 /**
  * Chamado pelo Vercel Cron (Authorization: Bearer CRON_SECRET).
- *  ?mode=hourly  estrutura + ontem/hoje (de hora em hora)
- *  ?mode=daily   reprocessa os últimos 7 dias (o Meta ajusta números retroativamente)
+ *  ?mode=daily   estrutura + últimos 7 dias (o Meta ajusta números retroativamente) — o único agendado
+ *                no vercel.json, porque o plano Hobby da Vercel só aceita agendamento diário
+ *  ?mode=hourly  estrutura + ontem/hoje (para um agendador externo, se quiser de hora em hora)
+ * Além disso, o painel sincroniza sozinho ao ser aberto quando o último sync tem mais de 1 h.
  * Em ambos: atualiza a PTAX das contas em moeda estrangeira, reenvia eventos da CAPI
  * que falharam e recalcula os alertas (com notificação).
  */

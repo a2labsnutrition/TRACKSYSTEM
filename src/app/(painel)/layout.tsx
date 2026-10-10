@@ -1,13 +1,20 @@
 import { AlertTriangle, FlaskConical } from "lucide-react";
+import { after } from "next/server";
 import { getRepository } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/env";
 import { sameOffset } from "@/lib/tz";
+import { autoSyncWorkspace, needsAutoSync } from "@/lib/integrations/meta/auto-sync";
 import { MobileNav, Sidebar } from "@/components/layout/nav";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const repo = await getRepository();
   const ctx = await repo.context();
   const tzMismatch = ctx.adAccounts.filter((a) => !sameOffset(a.timezone, ctx.workspace.timezone));
+  // Dados com mais de 1 h: sincroniza em segundo plano depois de responder
+  if (ctx.mode === "live" && needsAutoSync(ctx.adAccounts)) {
+    const ws = ctx.workspace.id;
+    after(() => autoSyncWorkspace(ws));
+  }
 
   return (
     <div className="flex min-h-dvh">

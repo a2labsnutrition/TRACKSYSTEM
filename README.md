@@ -76,9 +76,12 @@ Relatório completo, com evidências, priorização, testes e limitações: [`do
    Gere `ENCRYPTION_KEY` com `openssl rand -base64 32` e um `CRON_SECRET` qualquer.
    A geração do Parecer pode levar 1–2 min (`maxDuration = 300` na página da campanha); se o seu plano limitar menos que isso,
    use `ANTHROPIC_EFFORT=medium`.
-   O `vercel.json` agenda o sync de hora em hora e o reprocessamento diário — **o plano Hobby só permite cron diário**;
-   no Hobby, o sync horário precisa do plano Pro ou de um agendador externo chamando `/api/cron/meta-sync?mode=hourly`
-   com `Authorization: Bearer <CRON_SECRET>`.
+   O `vercel.json` agenda **um sync diário** (o plano Hobby da Vercel recusa o deploy com agendamento mais frequente). Além
+   disso, o painel sincroniza sozinho ao ser aberto quando o último sync passou de 1 h. Para sync de hora em hora mesmo sem
+   ninguém abrir o painel (alertas mais rápidos), use o plano Pro ou um agendador externo (ex.: cron-job.org) chamando
+   `/api/cron/meta-sync?mode=hourly` com `Authorization: Bearer <CRON_SECRET>`.
+   Se usar a integração Supabase da Vercel, ela cria as variáveis do Supabase sozinha — confira se aponta para o mesmo
+   projeto onde você rodou o SQL e adicione à mão `ENCRYPTION_KEY`, `CRON_SECRET` e `NEXT_PUBLIC_APP_URL`.
 3. Acesse o app, crie a conta e siga **Conexões** (≈10 min): Meta → Pixel/CAPI → script na página → Cakto → produto.
 
 ## Credenciais necessárias (lista única)

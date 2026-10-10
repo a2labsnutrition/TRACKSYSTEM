@@ -480,10 +480,9 @@ export async function runSyncCycle(
       const gopts: GraphOptions = { accessToken: token };
       if (!account.backfill_done) await enqueueBackfill(db, account);
       const today = todayIn(account.timezone);
-      if (mode === "hourly") {
-        result.logs.push(...(await syncStructure(db, account, gopts)));
-        result.logs.push(...(await syncActivities(db, account, gopts, 2)));
-      }
+      // Estrutura em todo ciclo (o diário pode ser o único agendamento no plano Hobby da Vercel)
+      result.logs.push(...(await syncStructure(db, account, gopts)));
+      if (mode === "hourly") result.logs.push(...(await syncActivities(db, account, gopts, 2)));
       const from = mode === "daily" ? addDays(today, -7) : addDays(today, -1);
       result.logs.push(...(await syncInsights(db, account, gopts, from, today)));
       // Breakdowns: diário (14 dias) ou na primeira vez que a conta sincroniza

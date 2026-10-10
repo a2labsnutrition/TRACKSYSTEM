@@ -245,7 +245,7 @@ export function freshnessOf(health: TrackingHealth, now = new Date()): Freshness
     return { label, at, status: h > maxHours ? "atrasado" : "ok", rule };
   };
   return [
-    item("Sincronização do Meta", health.lastMetaSyncAt, 6, "atrasado se > 6 h (cron de hora em hora)"),
+    item("Sincronização do Meta", health.lastMetaSyncAt, 6, "atrasado se > 6 h (sincroniza ao abrir o painel e 1×/dia)"),
     item("Último evento da Cakto", health.lastCaktoEventAt, 48, "atrasado se > 48 h"),
     item("Último evento do script", health.lastTrackingEventAt, 24, "atrasado se > 24 h"),
   ];
