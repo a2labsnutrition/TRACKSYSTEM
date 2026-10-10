@@ -46,8 +46,27 @@ function splitList(v){ return (v || "").split(",").map(function(x){ return x.tri
 function parseQuery(q){ var o = {}; (q || "").replace(/^\\?/, "").split("&").forEach(function(p){ if(!p) return; var i = p.indexOf("="); var k = decodeURIComponent((i<0?p:p.slice(0,i)).replace(/\\+/g," ")); var v = i<0 ? "" : decodeURIComponent(p.slice(i+1).replace(/\\+/g," ")); o[k] = v; }); return o; }
 function rid(n){ var a = ""; var c = "abcdefghijklmnopqrstuvwxyz0123456789"; var r = window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(n)) : null; for (var i=0;i<n;i++) a += c.charAt(r ? r[i] % 36 : Math.floor(Math.random()*36)); return a; }
 function getCookie(n){ var m = document.cookie.match(new RegExp("(?:^|; )" + n.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g,"\\\\$&") + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : null; }
-function rootDomain(){ var h = location.hostname; if (/^[\\d.]+$/.test(h) || h.indexOf(".") < 0) return h; var p = h.split("."); return p.slice(-2).join("."); }
-function setCookie(n, v, days){ var d = new Date(Date.now() + days*864e5).toUTCString(); document.cookie = n + "=" + encodeURIComponent(v) + "; expires=" + d + "; path=/; domain=" + rootDomain() + "; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : ""); }
+// Domínio do cookie: o mais amplo que o navegador ACEITA (testando), como o Google Analytics.
+// Evita domínios compartilhados (lovable.app, vercel.app) e sufixos como com.br, que o navegador recusa.
+var CD = null;
+function cookieDomain(){
+  if (CD !== null) return CD;
+  var h = location.hostname;
+  CD = "";
+  if (/^[\\d.]+$/.test(h) || h.indexOf(".") < 0) return CD;
+  var p = h.split(".");
+  for (var i = p.length - 2; i >= 0; i--) {
+    var d = p.slice(i).join(".");
+    document.cookie = "_cc_t=1; path=/; domain=" + d + "; SameSite=Lax";
+    if (document.cookie.indexOf("_cc_t=1") >= 0) {
+      document.cookie = "_cc_t=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=" + d;
+      CD = d;
+      return CD;
+    }
+  }
+  return CD;
+}
+function setCookie(n, v, days){ var d = new Date(Date.now() + days*864e5).toUTCString(); var dom = cookieDomain(); document.cookie = n + "=" + encodeURIComponent(v) + "; expires=" + d + "; path=/" + (dom ? "; domain=" + dom : "") + "; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : ""); }
 function lsGet(k){ try { return LS ? LS.getItem(k) : null; } catch(e){ return null; } }
 function lsSet(k, v){ try { if (LS) LS.setItem(k, v); } catch(e){} }
 
