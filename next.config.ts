@@ -7,7 +7,12 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   cacheComponents: false,
-  serverExternalPackages: ["playwright-core"],
+  serverExternalPackages: ["playwright-core", "@react-pdf/renderer"],
+  // Fontes embutidas no PDF (lidas do disco pela rota de exportação)
+  outputFileTracingIncludes: {
+    "/api/pdf/**": ["./src/lib/pdf/fonts/**/*"],
+    "/pdf/**": ["./src/lib/pdf/fonts/**/*"],
+  },
   turbopack: {
     rules: {
       "*.css": {
