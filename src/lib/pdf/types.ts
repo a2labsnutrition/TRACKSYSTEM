@@ -89,3 +89,29 @@ export function normalizeContent(c: unknown): PdfContent {
       .map((x, i) => ({ id: String(x.id || `c${i + 1}`), title: x.title, summary: String(x.summary ?? ""), markdown: String(x.markdown ?? "") })),
   };
 }
+
+const normTitle = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** Novo sumário mantendo o texto dos capítulos que já existiam com o mesmo título. */
+export function mergeOutline(existing: PdfChapter[], outline: Array<{ title: string; summary: string }>): PdfChapter[] {
+  const byTitle = new Map(existing.map((c) => [normTitle(c.title), c]));
+  const used = new Set<string>();
+  let n = existing.reduce((m, c) => Math.max(m, Number(/^c(\d+)$/.exec(c.id)?.[1] ?? 0)), 0);
+  return outline
+    .filter((o) => o.title.trim())
+    .map((o) => {
+      const prev = byTitle.get(normTitle(o.title));
+      if (prev && !used.has(prev.id)) {
+        used.add(prev.id);
+        return { ...prev, title: o.title.trim(), summary: o.summary || prev.summary };
+      }
+      n += 1;
+      return { id: `c${n}`, title: o.title.trim(), summary: o.summary, markdown: "" };
+    });
+}

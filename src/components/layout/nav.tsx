@@ -32,12 +32,9 @@ const MAIN = [
   { href: "/descobrir", label: "Descobrir & Criar", icon: Compass },
   { href: "/kits", label: "Kits de campanha", icon: Layers },
   { href: "/criativos", label: "Criativos", icon: Film },
+  { href: "/pdf", label: "Estúdio de PDF", icon: FileText },
   { href: "/conexoes", label: "Conexões", icon: Plug },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
-];
-
-const SOON = [
-  { label: "Estúdio de PDF", icon: FileText, phase: "Fase 4" },
 ];
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
@@ -60,17 +57,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
             <Icon className={cn("h-4 w-4", active ? "text-primary" : "")} />
             {item.label}
           </Link>
-        );
-      })}
-      <div className="mb-1 mt-5 px-3 text-[10px] font-semibold uppercase tracking-wider text-faint">Em breve</div>
-      {SOON.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div key={item.label} className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-faint" title={`Disponível na ${item.phase}`}>
-            <Icon className="h-4 w-4" />
-            <span className="flex-1">{item.label}</span>
-            <span className="rounded border border-border px-1 text-[10px]">{item.phase}</span>
-          </div>
         );
       })}
     </nav>

@@ -32,7 +32,7 @@ describe("blocos do PDF", () => {
     expect(normalizeContent({ chapters: [{ title: "A" }, null] }).chapters).toEqual([{ id: "c1", title: "A", summary: "", markdown: "" }]);
   });
   it("sumário colado da IA grátis", async () => {
-    const { parseOutlineText } = await import("@/lib/pdf/ai");
+    const { parseOutlineText } = await import("@/lib/pdf/prompts");
     expect(parseOutlineText("1. Começando — o básico\n2. **Receitas**: as principais\nCapítulo 3: Dicas finais")).toEqual([
       { title: "Começando", summary: "o básico" },
       { title: "Receitas", summary: "as principais" },
@@ -50,5 +50,19 @@ describe("imagens do Storage", () => {
     const r = resolveStorageImages(md, new Map([["ws1/img/a.png", "https://s/a"]]));
     expect(r).toContain("![Capa](https://s/a)");
     expect(r).toContain("arquivo não encontrado");
+  });
+});
+
+describe("sumário", () => {
+  it("mantém o texto dos capítulos de mesmo título e cria ids novos", async () => {
+    const { mergeOutline } = await import("@/lib/pdf/types");
+    const r = mergeOutline([{ id: "c1", title: "Começando", summary: "a", markdown: "TEXTO" }, { id: "c2", title: "Fim", summary: "", markdown: "X" }], [
+      { title: "Introdução", summary: "nova" },
+      { title: "começando", summary: "" },
+    ]);
+    expect(r).toEqual([
+      { id: "c3", title: "Introdução", summary: "nova", markdown: "" },
+      { id: "c1", title: "começando", summary: "a", markdown: "TEXTO" },
+    ]);
   });
 });
