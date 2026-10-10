@@ -101,6 +101,9 @@ export interface Creative {
   videoId: string | null;
   linkUrl: string | null;
   format: "video" | "image" | "carousel" | "unknown";
+  /** Variações de texto principal e de título (criativo dinâmico/Advantage+). */
+  texts?: string[];
+  headlines?: string[];
 }
 
 export interface Ad {

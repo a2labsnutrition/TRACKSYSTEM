@@ -30,6 +30,8 @@ export async function structured<S extends z.ZodType>(opts: {
   maxTokens?: number;
   effort?: Effort;
   timeoutMs?: number;
+  /** Imagens (base64) enviadas antes do texto — ex.: miniaturas dos anúncios. */
+  images?: Array<{ mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string }>;
 }): Promise<{ data: z.infer<S>; model: string }> {
   if (!env.anthropicApiKey) throw new AiError("Configure ANTHROPIC_API_KEY na Vercel para usar a geração com IA.");
   const client = new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 1 });
@@ -42,7 +44,17 @@ export async function structured<S extends z.ZodType>(opts: {
         fallbacks: "default",
         output_config: { effort: opts.effort ?? kitEffort(), format: betaZodOutputFormat(opts.schema) },
         system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: opts.user }],
+        messages: [
+          {
+            role: "user",
+            content: opts.images?.length
+              ? [
+                  ...opts.images.map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType, data: im.data } })),
+                  { type: "text" as const, text: opts.user },
+                ]
+              : opts.user,
+          },
+        ],
       },
       { timeout: opts.timeoutMs ?? 280_000 },
     );

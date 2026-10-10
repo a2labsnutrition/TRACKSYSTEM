@@ -1,3 +1,4 @@
+import { parseCreative } from "@/lib/integrations/meta/creative-parse";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Repository } from "@/lib/data/repository";
@@ -111,6 +112,27 @@ function orderFromDb(r: any): Order {
   };
 }
 
+/** Linha de "creatives" → Creative, relendo o bruto (cobre criativo dinâmico e linhas antigas). */
+function creativeFromRow(c: any) {
+  const p = parseCreative(c.raw);
+  const parsed = c.raw?._parsed ?? {};
+  const texts: string[] = Array.isArray(parsed.bodies) && parsed.bodies.length ? parsed.bodies : p.bodies;
+  const headlines: string[] = Array.isArray(parsed.titles) && parsed.titles.length ? parsed.titles : p.titles;
+  return {
+    id: c.id,
+    title: c.title ?? p.title,
+    body: c.body ?? p.body,
+    callToAction: c.call_to_action ?? p.callToAction,
+    thumbnailUrl: c.thumbnail_url,
+    imageUrl: c.image_url ?? p.imageUrl,
+    videoId: c.video_id ?? p.videoId,
+    linkUrl: c.link_url ?? p.linkUrl,
+    format: (c.format && c.format !== "unknown" ? c.format : p.format) ?? "unknown",
+    texts,
+    headlines,
+  };
+}
+
 export class SupabaseRepository implements Repository {
   constructor(
     private db: SupabaseClient,
@@ -193,19 +215,7 @@ export class SupabaseRepository implements Repository {
         status: r.status,
         effectiveStatus: r.effective_status,
         createdTime: r.created_time,
-        creative: c
-          ? {
-              id: c.id,
-              title: c.title,
-              body: c.body,
-              callToAction: c.call_to_action,
-              thumbnailUrl: c.thumbnail_url,
-              imageUrl: c.image_url,
-              videoId: c.video_id,
-              linkUrl: c.link_url,
-              format: c.format ?? "unknown",
-            }
-          : null,
+        creative: c ? creativeFromRow(c) : null,
       };
     });
   }

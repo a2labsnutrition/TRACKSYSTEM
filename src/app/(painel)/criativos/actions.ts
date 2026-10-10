@@ -180,25 +180,33 @@ export async function deleteAssetAction(id: string): Promise<ActionState> {
 /** Ideias de criativos a partir de uma campanha do Meta (IA integrada). */
 export async function campaignIdeasAction(_: ActionState, form: FormData): Promise<ActionState> {
   try {
-    if (!hasAi()) return { ok: false, message: "Sem ANTHROPIC_API_KEY: use “Copiar prompt” e cole a resposta em “Colar ideias”." };
+    if (!hasAi()) return { ok: false, message: "Sem ANTHROPIC_API_KEY: use “Copiar prompt” e cole a resposta em “Colar análise e ideias”." };
     const campaignId = str(form, "campaignId");
     if (!campaignId) return { ok: false, message: "Escolha a campanha." };
-    const { repo, workspace } = await getCreativeStore();
+    const { repo, workspace, store } = await getCreativeStore();
     const brief = await campaignBrief(repo, (await getDiscoverStore()).store, workspace, campaignId);
     if (!brief) return { ok: false, message: "Campanha não encontrada." };
-    const { ideas, scenes } = await generateCampaignIdeas(brief, str(form, "focus"));
+    const { ideas, scenes, sawImages } = await generateCampaignIdeas(brief, str(form, "focus"));
+    await store.saveAnalysis(campaignId, { source: "ia", sawImages, ...ideas });
     const n = await addScenes(scenes, null);
-    return done(`${ideas.sobre} — ${ideas.ideias.length} ideia(s), ${n} prompt(s) na lista de espera.`);
+    return done(`Análise pronta${sawImages ? ` (a IA viu ${sawImages} miniatura(s))` : ""}: ${ideas.ideias.length} ideia(s), ${n} prompt(s) na lista de espera.`);
   } catch (e) {
     return fail(e);
   }
 }
 
-/** Resposta colada da IA grátis (formato "## Ângulo" + "### Prompts para o Google Flow"). */
+/** Resposta colada da IA grátis: guarda a análise e põe os prompts na lista de espera. */
 export async function pastedIdeasAction(_: ActionState, form: FormData): Promise<ActionState> {
   try {
-    const scenes = scenesFromScripts(str(form, "text") ?? "", "markdown", false);
+    const text = str(form, "text") ?? "";
+    const scenes = scenesFromScripts(text, "markdown", false);
     if (!scenes.length) return { ok: false, message: "Não encontrei prompts. A resposta precisa ter “## Ângulo: …” e a lista em “### Prompts para o Google Flow”. Se veio em outro formato, use “Colar prompts”." };
+    const campaignId = str(form, "campaignId");
+    if (campaignId) {
+      const head = text.split(/\n##\s+Ângulo:/i)[0].trim();
+      const { store } = await getCreativeStore();
+      await store.saveAnalysis(campaignId, { source: "manual", markdown: head.slice(0, 20_000), ideas: [...new Set(scenes.map((s) => s.angle))] });
+    }
     const n = await addScenes(scenes, null);
     return done(`${n} prompt(s) de ${new Set(scenes.map((s) => s.angle)).size} ideia(s) na lista de espera.`);
   } catch (e) {

@@ -15,6 +15,9 @@ export interface CreativeStore {
   addAsset(a: Omit<CreativeAsset, "id" | "createdAt">): Promise<CreativeAsset>;
   updateAsset(id: string, patch: Partial<Pick<CreativeAsset, "adName" | "angle" | "hook" | "metaAdId">>): Promise<void>;
   deleteAsset(id: string): Promise<CreativeAsset | null>;
+  /** Última análise de criativos de uma campanha (IA). */
+  getAnalysis(campaignId: string): Promise<{ data: unknown; createdAt: string } | null>;
+  saveAnalysis(campaignId: string, data: unknown): Promise<void>;
 }
 
 export function encodeScene(s: FlowScene): string {
@@ -47,6 +50,7 @@ export class MemoryCreativeStore implements CreativeStore {
   readonly mode = "demo" as const;
   queue: FlowQueueItem[] = [];
   assets: CreativeAsset[] = [];
+  analyses = new Map<string, { data: unknown; createdAt: string }>();
 
   async listQueue() {
     return [...this.queue].sort((a, b) => b.priority - a.priority || a.createdAt.localeCompare(b.createdAt));
@@ -74,6 +78,12 @@ export class MemoryCreativeStore implements CreativeStore {
   async updateAsset(id: string, patch: Parameters<CreativeStore["updateAsset"]>[1]) {
     const a = this.assets.find((x) => x.id === id);
     if (a) Object.assign(a, patch);
+  }
+  async getAnalysis(campaignId: string) {
+    return this.analyses.get(campaignId) ?? null;
+  }
+  async saveAnalysis(campaignId: string, data: unknown) {
+    this.analyses.set(campaignId, { data, createdAt: new Date().toISOString() });
   }
   async deleteAsset(id: string) {
     const a = this.assets.find((x) => x.id === id) ?? null;

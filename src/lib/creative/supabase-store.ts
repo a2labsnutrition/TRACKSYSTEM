@@ -111,4 +111,22 @@ export class SupabaseCreativeStore implements CreativeStore {
     const r = check(res, "remover criativo");
     return r ? assetFromRow(r) : null;
   }
+
+  // Análises ficam em campaign_kits (kind "analise_criativos", com campaign_id) — tabela já existente.
+  async getAnalysis(campaignId: string) {
+    const res = await this.db
+      .from("campaign_kits")
+      .select("content, created_at")
+      .eq("workspace_id", this.ws)
+      .eq("kind", "analise_criativos")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const r = (check(res, "ler análise") ?? [])[0] as any;
+    return r ? { data: r.content, createdAt: r.created_at } : null;
+  }
+
+  async saveAnalysis(campaignId: string, data: unknown) {
+    check(await this.db.from("campaign_kits").insert({ workspace_id: this.ws, kind: "analise_criativos", campaign_id: campaignId, version: 1, content: data }), "salvar análise");
+  }
 }

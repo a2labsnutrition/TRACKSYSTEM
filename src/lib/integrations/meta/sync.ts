@@ -5,7 +5,8 @@ import { decryptSecret, sha256 } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import type { Level } from "@/lib/data/types";
 import { addDays, diffDays, todayIn } from "@/lib/tz";
-import { graphGetAll, MetaApiError, type GraphOptions } from "./client";
+import { graphGetAll, graphRequest, MetaApiError, type GraphOptions } from "./client";
+import { parseCreative } from "./creative-parse";
 import { activityLabel, BREAKDOWN_SPECS, isRelevantActivity, parseBreakdownRow, type RawActivity } from "./breakdowns";
 import { budgetFromMeta, fieldsForLevel, parseInsight, type RawInsight } from "./insights";
 
@@ -59,14 +60,6 @@ function targetingSummary(t: any): string | null {
   if (t.excluded_custom_audiences?.length) parts.push(`exclui ${t.excluded_custom_audiences.length}`);
   if (t.targeting_automation?.advantage_audience === 1) parts.push("Advantage+");
   return parts.join(" · ");
-}
-
-function creativeFormat(c: any): string {
-  if (!c) return "unknown";
-  if (c.video_id || c.object_story_spec?.video_data) return "video";
-  if (c.object_story_spec?.link_data?.child_attachments?.length) return "carousel";
-  if (c.image_url || c.object_story_spec?.link_data?.image_hash || c.thumbnail_url) return "image";
-  return "unknown";
 }
 
 export async function syncStructure(db: SupabaseClient, account: AccountRow, opts: GraphOptions): Promise<SyncLog[]> {
@@ -176,7 +169,7 @@ export async function syncStructure(db: SupabaseClient, account: AccountRow, opt
     `${account.meta_account_id}/ads`,
     {
       fields:
-        "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,name,title,body,thumbnail_url,image_url,video_id,call_to_action_type,object_story_spec,link_url}",
+        "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,name,title,body,thumbnail_url,image_url,video_id,call_to_action_type,object_story_spec,asset_feed_spec,effective_object_story_id,link_url}",
       thumbnail_width: 320,
       thumbnail_height: 320,
       limit: 200,
@@ -185,22 +178,35 @@ export async function syncStructure(db: SupabaseClient, account: AccountRow, opt
   );
   const creatives = ads.filter((a) => a.creative?.id).map((a) => a.creative);
   if (creatives.length) {
-    const uniq = new Map(creatives.map((c: any) => [c.id, c]));
+    const uniq = new Map<string, any>(creatives.map((c: any) => [c.id, c]));
+    const parsed = new Map([...uniq.values()].map((c: any) => [c.id, parseCreative(c)]));
+    // Publicação existente: o texto fica no post. Busca o melhor possível (depende da permissão da página).
+    const missing = [...parsed.entries()].filter(([, p]) => !p.body && p.storyId).slice(0, 40);
+    await Promise.all(
+      missing.map(async ([, p]) => {
+        try {
+          const post = await graphRequest<{ message?: string }>("GET", p.storyId!, { fields: "message" }, { ...opts, maxRetries: 0 });
+          if (post?.message) p.body = post.message.trim();
+        } catch {
+          // sem permissão para ler a publicação: segue sem o texto
+        }
+      }),
+    );
     const { error } = await db.from("creatives").upsert(
       [...uniq.values()].map((c: any) => {
-        const link = c.object_story_spec?.link_data ?? c.object_story_spec?.video_data ?? {};
+        const p = parsed.get(c.id)!;
         return {
           workspace_id: ws,
           id: c.id,
-          title: c.title ?? link.name ?? link.title ?? null,
-          body: c.body ?? link.message ?? null,
-          call_to_action: c.call_to_action_type ?? link.call_to_action?.type ?? null,
+          title: p.title,
+          body: p.body,
+          call_to_action: p.callToAction,
           thumbnail_url: c.thumbnail_url ?? null,
-          image_url: c.image_url ?? link.picture ?? null,
-          video_id: c.video_id ?? link.video_id ?? null,
-          link_url: c.link_url ?? link.link ?? link.call_to_action?.value?.link ?? null,
-          format: creativeFormat(c),
-          raw: c,
+          image_url: p.imageUrl,
+          video_id: p.videoId,
+          link_url: p.linkUrl,
+          format: p.format,
+          raw: { ...c, _parsed: { bodies: p.bodies, titles: p.titles, videoIds: p.videoIds, storyBody: p.body } },
           updated_at: now,
         };
       }),
