@@ -307,6 +307,17 @@ var api = {
 };
 window.CentralTracker = api;
 
+// Botões que abrem o checkout por JavaScript (window.open) também levam o sck.
+// (location.href = "..." não dá para interceptar: nesses casos use <a href> ou CentralTracker.checkoutUrl(url).)
+if (typeof window.open === "function") {
+  var _open = window.open;
+  window.open = function(url){
+    var args = [].slice.call(arguments);
+    try { if (ctx && typeof url === "string" && isCheckoutHref(url)) args[0] = decorate(url); } catch(e){}
+    return _open.apply(window, args);
+  };
+}
+
 document.addEventListener("click", onClick, true);
 document.addEventListener("mousedown", onPointer, true);
 document.addEventListener("touchstart", onPointer, { capture: true, passive: true });
