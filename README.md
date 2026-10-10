@@ -69,7 +69,8 @@ Relatório completo, com evidências, priorização, testes e limitações: [`do
 
 ## Colocar em produção
 
-1. **Supabase**: crie um projeto. Em *SQL Editor*, rode `supabase/migrations/0001_init.sql` (ou `supabase db push`).
+1. **Supabase**: crie um projeto. Em *SQL Editor*, rode **em ordem** `supabase/migrations/0001_init.sql`, `0002_fase2.sql` e
+   `0003_confiabilidade.sql` (ou `supabase db push`).
    Em *Authentication → URL Configuration*, coloque a URL do app e `https://SEU-APP/auth/callback` como redirect.
 2. **Vercel**: importe o repositório e configure as variáveis do `.env.example`.
    Gere `ENCRYPTION_KEY` com `openssl rand -base64 32` e um `CRON_SECRET` qualquer.
