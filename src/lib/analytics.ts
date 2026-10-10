@@ -1,11 +1,12 @@
 import "server-only";
 import type { Repository } from "@/lib/data/repository";
 import type { Ad, AdSet, Campaign, InsightDaily, Order, Product, TrackingHealth } from "@/lib/data/types";
-import { configFromProduct, DEFAULT_DECISION_CONFIG, evaluate, type DecisionResult, type WindowData } from "@/lib/decision/rules";
+import { configFromProduct, DEFAULT_DECISION_CONFIG, evaluate, type DecisionConfig, type DecisionResult, type WindowData } from "@/lib/decision/rules";
 import {
   aggregateInsights,
   aggregateOrders,
   computeDivergence,
+  computePacing,
   computeProfit,
   deriveMetrics,
   detectFatigue,
@@ -14,7 +15,9 @@ import {
   type ProfitMetrics,
   type RealTotals,
 } from "@/lib/metrics/compute";
-import { addDays, dateIn, eachDay, todayIn, type Period } from "@/lib/tz";
+import { computeAlerts } from "@/lib/alerts/engine";
+import { analyzeAudience, audienceHighlights } from "@/lib/audience";
+import { addDays, dateIn, eachDay, hourIn, todayIn, type Period } from "@/lib/tz";
 import { groupBy, safeDiv } from "@/lib/utils";
 
 const PAID = (o: Order) => o.status === "paid";
@@ -56,42 +59,29 @@ export async function overview(repo: Repository, period: Period) {
   const attributedPaid = orders.filter((o) => PAID(o) && o.attributionMethod !== "unattributed").length;
   const pendingPix = orders.filter((o) => o.status === "pending" && o.paymentMethod === "pix").length;
   const divergence = computeDivergence(cur.meta.purchases, attributedPaid, pendingPix);
-  const rows = await campaignRows(repo, period, health);
-  const alerts = buildAlerts(rows, health, divergence, cur);
+  const [rows, ads] = await Promise.all([campaignRows(repo, period, health), repo.ads()]);
+  const tzAcc = ctx.adAccounts[0]?.timezone ?? ctx.workspace.timezone;
+  const now = new Date();
+  const alerts: Alert[] = computeAlerts({
+    campaigns: rows.map((r) => ({
+      id: r.campaign.id,
+      name: r.campaign.name,
+      active: r.campaign.effectiveStatus === "ACTIVE",
+      dailyBudget: r.campaign.dailyBudget,
+      spendToday: r.w1.spend,
+      spend3d: r.w3.spend,
+      signals: r.decision.signals,
+    })),
+    ads: ads.map((a) => ({ id: a.id, name: a.name, campaignId: a.campaignId, effectiveStatus: a.effectiveStatus })),
+    accounts: ctx.adAccounts.map((a) => ({ id: a.id, name: a.name, status: a.status })),
+    health,
+    dayElapsed: (hourIn(now, tzAcc) * 60 + now.getUTCMinutes()) / 1440,
+  }).map((a) => ({ severity: a.severity, title: a.title, detail: a.message, href: a.href ?? undefined }));
+  if (divergence.ratio != null && Math.abs(divergence.ratio) > 0.3 && divergence.realPurchases + divergence.metaPurchases >= 10) {
+    alerts.push({ severity: "atencao", title: "Divergência Meta × Cakto", detail: divergence.explanation, href: "/saude" });
+  }
   const daily = dailySeries(ins, orders, period, ctx.workspace.timezone, tax);
   return { ctx, cur, prev, divergence, alerts, health, daily, top: rows.filter((r) => r.periodSpend > 0).slice(0, 6) };
-}
-
-function buildAlerts(rows: CampaignRow[], health: TrackingHealth, div: ReturnType<typeof computeDivergence>, cur: Kpis): Alert[] {
-  const alerts: Alert[] = [];
-  for (const integ of health.integrations) {
-    if (integ.provider === "anthropic") continue;
-    if (integ.status === "error") alerts.push({ severity: "critico", title: `${integ.label}: problema`, detail: integ.detail, href: "/saude" });
-    if (integ.status === "missing") alerts.push({ severity: "atencao", title: `${integ.label} não configurado`, detail: integ.detail, href: "/conexoes" });
-    if (integ.status === "warning") alerts.push({ severity: "atencao", title: integ.label, detail: integ.detail, href: "/saude" });
-  }
-  if (cur.derived.connectRate != null && cur.meta.linkClicks > 100 && cur.derived.connectRate < 0.6) {
-    alerts.push({
-      severity: "critico",
-      title: "Cliques sem visualização da página",
-      detail: `Connect rate ${(cur.derived.connectRate * 100).toFixed(0)}%: página fora do ar, lenta ou redirecionando. Teste a URL no celular.`,
-      href: "/saude",
-    });
-  }
-  if (div.ratio != null && Math.abs(div.ratio) > 0.3 && div.realPurchases + div.metaPurchases >= 10) {
-    alerts.push({ severity: "atencao", title: "Divergência Meta × Cakto", detail: div.explanation, href: "/saude" });
-  }
-  for (const r of rows) {
-    if (r.decision.status === "pausar") {
-      alerts.push({ severity: "critico", title: `Pausar? ${r.campaign.name}`, detail: r.decision.headline, href: `/campanhas/${r.campaign.id}` });
-    }
-    const freq = r.decision.signals.find((s) => s.code === "frequencia_alta");
-    if (freq && r.campaign.effectiveStatus === "ACTIVE") {
-      alerts.push({ severity: "atencao", title: `Frequência alta: ${r.campaign.name}`, detail: freq.message, href: `/campanhas/${r.campaign.id}` });
-    }
-  }
-  const order = { critico: 0, atencao: 1, info: 2 };
-  return alerts.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
 // ------------------------------- Série diária -------------------------------
@@ -210,6 +200,7 @@ export interface WindowSummary {
 export interface CampaignRow {
   campaign: Campaign;
   product: Product | null;
+  config: DecisionConfig;
   period: Kpis;
   periodSpend: number;
   w1: WindowSummary;
@@ -251,18 +242,32 @@ export async function campaignRows(repo: Repository, period: Period, health?: Tr
   const today = todayIn(tz);
   const from = period.from < addDays(today, -6) ? period.from : addDays(today, -6);
   const to = period.to > today ? period.to : today;
-  const [campaigns, products, ins, orders, adsets, h] = await Promise.all([
+  const [campaigns, products, ins, orders, adsets, h, adIns, ads] = await Promise.all([
     repo.campaigns(),
     repo.products(),
-    repo.insights({ level: "campaign", from, to }),
+    repo.insights({ level: "campaign", from: from < addDays(today, -6) ? from : addDays(today, -6), to }),
     repo.orders({ from: addDays(from, -1), to }),
     repo.adsets(),
     health ? Promise.resolve(health) : repo.health(),
+    // Anúncios dos últimos 21 dias: fadiga compara início x fim da veiculação
+    repo.insights({ level: "ad", from: addDays(today, -20), to: today }),
+    repo.ads(),
   ]);
   const ok = trackingOk(h);
   const insBy = groupBy(ins, (r) => r.entityId);
   const ordersBy = groupBy(orders.filter((o) => o.campaignId), (o) => o.campaignId!);
   const learning = new Set(adsets.filter((a) => a.learningStage === "LEARNING").map((a) => a.campaignId));
+  const adInsBy = groupBy(adIns, (r) => r.entityId);
+  const adName = new Map(ads.map((a) => [a.id, a.name]));
+  const adsByCampaign = groupBy(ads, (a) => a.campaignId);
+  const fatigueFor = (campaignId: string) => {
+    const active = (adsByCampaign.get(campaignId) ?? []).filter((a) => {
+      const rows = adInsBy.get(a.id) ?? [];
+      return a.effectiveStatus === "ACTIVE" && rows.some((r) => r.date >= addDays(today, -6) && r.spend > 0);
+    });
+    const fatigued = active.filter((a) => detectFatigue(adInsBy.get(a.id) ?? []).fatigued).map((a) => adName.get(a.id) ?? a.id);
+    return { activeAds: active.length, fatiguedAds: fatigued };
+  };
 
   return campaigns
     .map((c) => {
@@ -281,7 +286,16 @@ export async function campaignRows(repo: Repository, period: Period, health?: Tr
       const pk = kpis(periodIns, periodOrders, ctx.workspace.taxRate);
       const decision =
         c.effectiveStatus === "ACTIVE"
-          ? evaluate({ last1d: w1, last3d: w3, last7d: w7, trackingOk: ok, learningPhase: learning.has(c.id), config })
+          ? evaluate({
+              last1d: w1,
+              last3d: w3,
+              last7d: w7,
+              prev4d: windowData(cIns, cOrders, addDays(today, -6), addDays(today, -3), tz),
+              trackingOk: ok,
+              learningPhase: learning.has(c.id),
+              config,
+              ...fatigueFor(c.id),
+            })
           : {
               status: "manter" as const,
               confidence: "baixa" as const,
@@ -289,7 +303,7 @@ export async function campaignRows(repo: Repository, period: Period, health?: Tr
               missingData: null,
               headline: "Campanha pausada.",
             };
-      return { campaign: c, product, period: pk, periodSpend: pk.meta.spend, w1: summarize(w1), w3: summarize(w3), w7: summarize(w7), decision };
+      return { campaign: c, product, config, period: pk, periodSpend: pk.meta.spend, w1: summarize(w1), w3: summarize(w3), w7: summarize(w7), decision };
     })
     .sort((a, b) => b.periodSpend - a.periodSpend || Number(b.campaign.effectiveStatus === "ACTIVE") - Number(a.campaign.effectiveStatus === "ACTIVE"));
 }
@@ -338,7 +352,7 @@ export async function campaignDetail(repo: Repository, campaignId: string, perio
   const campaign = campaigns.find((c) => c.id === campaignId);
   if (!campaign) return null;
 
-  const [cIns, adsetIns, adIns, adsets, ads, ordersAll, notes, rows] = await Promise.all([
+  const [cIns, adsetIns, adIns, adsets, ads, ordersAll, notes, rows, breakdowns, events, todayCampaign] = await Promise.all([
     repo.insights({ level: "campaign", from: period.from, to: period.to, campaignId }),
     repo.insights({ level: "adset", from: period.from, to: period.to, campaignId }),
     // Anúncios: pelo menos 30 dias para detectar fadiga (início vs. fim da veiculação)
@@ -348,6 +362,9 @@ export async function campaignDetail(repo: Repository, campaignId: string, perio
     repo.orders({ from: period.from, to: period.to }),
     repo.notes(campaignId),
     campaignRows(repo, period),
+    repo.breakdowns({ campaignId, from: period.from, to: period.to }),
+    repo.entityEvents({ campaignId, from: period.from, to: period.to }),
+    repo.insights({ level: "campaign", from: todayIn(tz), to: todayIn(tz), campaignId }),
   ]);
   const orders = ordersAll.filter((o) => o.campaignId === campaignId);
   const row = rows.find((r) => r.campaign.id === campaignId)!;
@@ -395,14 +412,32 @@ export async function campaignDetail(repo: Repository, campaignId: string, perio
     };
   });
 
+  const markerKind = (t: string): "orcamento" | "criativo" | "aprendizado" | "nota" =>
+    /budget/.test(t) ? "orcamento" : /learning/.test(t) ? "aprendizado" : /create_ad$|creative/.test(t) ? "criativo" : "nota";
+  const eventAdIds = new Set(events.filter((e) => e.adId).map((e) => e.adId));
   const markers = [
     ...notes.map((n) => ({ date: n.date, label: n.text, kind: "nota" as const })),
+    ...events.map((e) => ({ date: dateIn(new Date(e.eventTime), tz), label: e.label, kind: markerKind(e.eventType) })),
+    // Anúncios novos que não vieram pelas atividades do Meta
     ...ads
-      .filter((a) => a.createdTime && dateIn(new Date(a.createdTime), tz) >= period.from)
+      .filter((a) => a.createdTime && !eventAdIds.has(a.id) && dateIn(new Date(a.createdTime), tz) >= period.from)
       .map((a) => ({ date: dateIn(new Date(a.createdTime!), tz), label: `Novo anúncio: ${a.name}`, kind: "criativo" as const })),
-  ];
+  ].sort((a, b) => a.date.localeCompare(b.date));
 
-  return { ctx, campaign, row, k, funnel, leak, timeline, adsetPerf, adsetMeta, adPerf, notes, markers, orders };
+  // ---- Pacing de hoje ----
+  const dailyBudget =
+    campaign.dailyBudget ?? (adsets.filter((a) => a.effectiveStatus === "ACTIVE").reduce((s, a) => s + (a.dailyBudget ?? 0), 0) || null);
+  const now = new Date();
+  const accountTz = ctx.adAccounts.find((a) => a.id === campaign.adAccountId)?.timezone ?? tz;
+  const pacing = dailyBudget
+    ? computePacing(todayCampaign.reduce((s, r) => s + r.spend, 0), dailyBudget, hourIn(now, accountTz), now.getUTCMinutes())
+    : null;
+
+  // ---- Públicos ----
+  const audience = analyzeAudience(breakdowns, cIns, row.config.targetCpa);
+  const highlights = audienceHighlights(audience);
+
+  return { ctx, campaign, row, k, funnel, leak, timeline, adsetPerf, adsetMeta, adPerf, notes, markers, orders, pacing, audience, highlights, hasBreakdowns: breakdowns.length > 0 };
 }
 
 function round2(v: number) {

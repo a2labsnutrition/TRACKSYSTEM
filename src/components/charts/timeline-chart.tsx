@@ -21,6 +21,13 @@ export interface Marker {
   kind: "nota" | "criativo" | "orcamento" | "aprendizado";
 }
 
+const MARKER_COLOR: Record<Marker["kind"], string> = {
+  nota: "var(--warn)",
+  criativo: "var(--violet)",
+  orcamento: "var(--info)",
+  aprendizado: "var(--good)",
+};
+
 const METRICS = {
   spend: { label: "Gasto", color: "var(--chart-spend)", fmt: (v: number) => fmtBRL(v) },
   cpa: { label: "CPA real", color: "var(--warn)", fmt: (v: number) => fmtBRL(v) },
@@ -68,7 +75,7 @@ export function TimelineChart({ data, markers = [] }: { data: TimelinePoint[]; m
               formatter={(v) => [v == null ? "—" : m.fmt(Number(v)), m.label]}
             />
             {markers.map((mk, i) => (
-              <ReferenceLine key={i} x={mk.date} stroke={mk.kind === "nota" ? "var(--warn)" : "var(--violet)"} strokeDasharray="3 3" />
+              <ReferenceLine key={i} x={mk.date} stroke={MARKER_COLOR[mk.kind]} strokeDasharray="3 3" />
             ))}
             <Line dataKey={metric} stroke={m.color} strokeWidth={2} dot={{ r: 2 }} connectNulls type="monotone" />
           </LineChart>
@@ -76,9 +83,9 @@ export function TimelineChart({ data, markers = [] }: { data: TimelinePoint[]; m
       </div>
       {markers.length ? (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
-          {markers.slice(0, 8).map((mk, i) => (
+          {markers.slice(-10).map((mk, i) => (
             <span key={i}>
-              <span className={mk.kind === "nota" ? "text-warn" : "text-violet"}>┆</span> {fmtDate(mk.date)}: {mk.label}
+              <span style={{ color: MARKER_COLOR[mk.kind] }}>┆</span> {fmtDate(mk.date)}: {mk.label}
             </span>
           ))}
         </div>

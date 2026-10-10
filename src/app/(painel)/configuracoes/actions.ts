@@ -67,8 +67,27 @@ export async function saveProduct(_: ActionState, form: FormData): Promise<Actio
         .filter(Boolean),
     };
     const supabase = await createSupabaseServer();
-    const { error } = id ? await supabase.from("products").update(row).eq("id", id) : await supabase.from("products").insert(row);
-    if (error) return { ok: false, message: error.message };
+    const res = id
+      ? await supabase.from("products").update(row).eq("id", id).select("id").single()
+      : await supabase.from("products").insert(row).select("id").single();
+    if (res.error) return { ok: false, message: res.error.message };
+    const productId = res.data.id as string;
+
+    // Ajustes das regras de decisão (vazio = padrão do sistema)
+    const rules: Record<string, number> = {};
+    const setNum = (key: string, v: number | null) => {
+      if (v != null && v >= 0) rules[key] = v;
+    };
+    setNum("killSpendMultiple", num(form.get("killSpendMultiple")));
+    setNum("frequencyMax", num(form.get("frequencyMax")));
+    setNum("minPurchasesToScale", num(form.get("minPurchasesToScale")));
+    setNum("minLinkClicks", num(form.get("minLinkClicks")));
+    setNum("connectRateMin", pct(form.get("connectRateMin")));
+    setNum("minTestBudget", num(form.get("minTestBudget")));
+    const { error: rErr } = await supabase
+      .from("decision_rules")
+      .upsert({ workspace_id: ctx.workspace.id, product_id: productId, config: rules }, { onConflict: "workspace_id,product_id" });
+    if (rErr) return { ok: false, message: `Produto salvo, mas as regras falharam: ${rErr.message}` };
     revalidatePath("/", "layout");
     return { ok: true, message: id ? "Produto atualizado." : "Produto criado." };
   } catch (e) {

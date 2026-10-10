@@ -3,6 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Repository } from "@/lib/data/repository";
 import type {
   Ad,
+  AdvisorReport,
+  AlertRecord,
+  BreakdownRow,
+  EntityEvent,
   AdSet,
   Campaign,
   CapiLog,
@@ -228,8 +232,13 @@ export class SupabaseRepository implements Repository {
   }
 
   async products(): Promise<Product[]> {
-    const { data } = await this.db.from("products").select("*").eq("workspace_id", this.ws).order("name");
+    const [{ data }, { data: rules }] = await Promise.all([
+      this.db.from("products").select("*").eq("workspace_id", this.ws).order("name"),
+      this.db.from("decision_rules").select("product_id, config").eq("workspace_id", this.ws).not("product_id", "is", null),
+    ]);
+    const rulesBy = new Map((rules ?? []).map((r: any) => [r.product_id, r.config]));
     return (data ?? []).map((r: any) => ({
+      rules: rulesBy.get(r.id) ?? undefined,
       id: r.id,
       name: r.name,
       price: n(r.price),
@@ -369,6 +378,104 @@ export class SupabaseRepository implements Repository {
       linkClicks: ins.reduce((s, r) => s + r.linkClicks, 0),
       landingPageViews: ins.reduce((s, r) => s + r.landingPageViews, 0),
     };
+  }
+
+  async breakdowns(q: { campaignId: string; from: string; to: string }): Promise<BreakdownRow[]> {
+    const rows = await fetchAll<any>((a, b) =>
+      this.db
+        .from("insights_breakdowns_daily")
+        .select("breakdown, breakdown_value, entity_id, date, spend, impressions, reach, link_clicks, landing_page_views, initiate_checkout, purchases, purchase_value")
+        .eq("workspace_id", this.ws)
+        .eq("level", "campaign")
+        .eq("entity_id", q.campaignId)
+        .gte("date", q.from)
+        .lte("date", q.to)
+        .range(a, b),
+    );
+    return rows.map((r) => ({
+      breakdown: r.breakdown,
+      value: r.breakdown_value,
+      entityId: r.entity_id,
+      date: String(r.date).slice(0, 10),
+      spend: n(r.spend),
+      impressions: n(r.impressions),
+      reach: n(r.reach),
+      linkClicks: n(r.link_clicks),
+      landingPageViews: n(r.landing_page_views),
+      initiateCheckout: n(r.initiate_checkout),
+      purchases: n(r.purchases),
+      purchaseValue: n(r.purchase_value),
+    }));
+  }
+
+  async entityEvents(q: { campaignId?: string; from: string; to: string }): Promise<EntityEvent[]> {
+    const tz = this.ctx.workspace.timezone;
+    let qq = this.db
+      .from("entity_events")
+      .select("id, campaign_id, adset_id, ad_id, event_type, label, source, event_time")
+      .eq("workspace_id", this.ws)
+      .gte("event_time", localDayStartUtc(q.from, tz))
+      .lt("event_time", localDayStartUtc(addDays(q.to, 1), tz))
+      .order("event_time", { ascending: false })
+      .limit(300);
+    if (q.campaignId) qq = qq.eq("campaign_id", q.campaignId);
+    const { data } = await qq;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      campaignId: r.campaign_id,
+      adsetId: r.adset_id,
+      adId: r.ad_id,
+      eventType: r.event_type,
+      label: r.label,
+      source: r.source,
+      eventTime: r.event_time,
+    }));
+  }
+
+  async advisorReports(campaignId: string, limit = 10): Promise<AdvisorReport[]> {
+    const { data } = await this.db
+      .from("advisor_reports")
+      .select("id, campaign_id, report_date, created_at, status, rules_status, confidence, model, content")
+      .eq("workspace_id", this.ws)
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      campaignId: r.campaign_id,
+      reportDate: String(r.report_date),
+      createdAt: r.created_at,
+      status: r.status,
+      rulesStatus: r.rules_status,
+      confidence: r.confidence,
+      model: r.model ?? "",
+      content: r.content,
+    }));
+  }
+
+  async alerts(q: { status?: "open" | "all"; limit?: number }): Promise<AlertRecord[]> {
+    let qq = this.db
+      .from("alerts")
+      .select("id, type, severity, entity_level, entity_id, message, data, status, created_at, resolved_at, notified_at")
+      .eq("workspace_id", this.ws)
+      .order("created_at", { ascending: false })
+      .limit(q.limit ?? 200);
+    if (q.status === "open") qq = qq.eq("status", "open");
+    const { data } = await qq;
+    return (data ?? []).map((r: any) => ({
+      id: r.id,
+      type: r.type,
+      severity: r.severity,
+      entityLevel: r.entity_level,
+      entityId: r.entity_id,
+      title: r.data?.title ?? String(r.message).split(" — ")[0],
+      message: r.data?.title && String(r.message).startsWith(r.data.title) ? String(r.message).slice(r.data.title.length + 3) : r.message,
+      href: r.data?.href ?? null,
+      status: r.status,
+      createdAt: r.created_at,
+      resolvedAt: r.resolved_at,
+      notifiedAt: r.notified_at,
+    }));
   }
 
   async notes(campaignId?: string): Promise<UserNote[]> {

@@ -1,5 +1,9 @@
 import type {
   Ad,
+  AdvisorReport,
+  AlertRecord,
+  BreakdownRow,
+  EntityEvent,
   AdSet,
   Campaign,
   CapiLog,
@@ -29,4 +33,9 @@ export interface Repository {
   capiLogs(limit: number): Promise<CapiLog[]>;
   health(): Promise<TrackingHealth>;
   notes(campaignId?: string): Promise<UserNote[]>;
+  // ---- Fase 2 ----
+  breakdowns(q: { campaignId: string; from: string; to: string }): Promise<BreakdownRow[]>;
+  entityEvents(q: { campaignId?: string; from: string; to: string }): Promise<EntityEvent[]>;
+  advisorReports(campaignId: string, limit?: number): Promise<AdvisorReport[]>;
+  alerts(q: { status?: "open" | "all"; limit?: number }): Promise<AlertRecord[]>;
 }

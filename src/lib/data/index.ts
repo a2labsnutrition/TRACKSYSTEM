@@ -7,7 +7,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { DemoRepository } from "./demo/repo";
 import type { Repository } from "./repository";
 import { SupabaseRepository } from "./supabase/repo";
-import type { WorkspaceContext } from "./types";
+import { DEFAULT_NOTIFY, type WorkspaceContext } from "./types";
 
 export const DEMO_COOKIE = "cc_demo";
 export const WS_COOKIE = "cc_ws";
@@ -31,7 +31,7 @@ export const getRepository = cache(async (): Promise<Repository> => {
 
   const { data: memberships } = await supabase
     .from("workspace_members")
-    .select("workspace_id, workspaces(id, name, timezone, currency, tax_rate, default_fee_rate)")
+    .select("workspace_id, workspaces(id, name, timezone, currency, tax_rate, default_fee_rate, notify)")
     .eq("user_id", user.id);
   if (!memberships?.length) redirect("/onboarding");
 
@@ -56,6 +56,7 @@ export const getRepository = cache(async (): Promise<Repository> => {
       currency: w.currency,
       taxRate: Number(w.tax_rate ?? 0),
       defaultFeeRate: Number(w.default_fee_rate ?? 0.0699),
+      notify: { ...DEFAULT_NOTIFY, ...(w.notify ?? {}) },
     },
     adAccounts: (accounts ?? []).map((a) => ({
       id: a.id,

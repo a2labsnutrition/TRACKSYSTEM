@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Bell,
   BarChart3,
   CalendarDays,
   Compass,
@@ -25,6 +26,7 @@ const MAIN = [
   { href: "/gasto-diario", label: "Gasto por dia", icon: CalendarDays },
   { href: "/campanhas", label: "Campanhas", icon: Megaphone },
   { href: "/vendas", label: "Vendas", icon: Receipt },
+  { href: "/alertas", label: "Alertas", icon: Bell },
   { href: "/saude", label: "Saúde do tracking", icon: Activity },
   { href: "/conexoes", label: "Conexões", icon: Plug },
   { href: "/configuracoes", label: "Configurações", icon: Settings },

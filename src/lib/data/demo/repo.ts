@@ -1,16 +1,25 @@
 import type { Repository } from "@/lib/data/repository";
-import type { CapiLog, Order, TrackingEvent, TrackingHealth, UserNote, WorkspaceContext } from "@/lib/data/types";
+import { demoReports } from "@/lib/advisor/memory";
+import { DEFAULT_NOTIFY, type AdvisorReport, type AlertRecord, type BreakdownRow, type CapiLog, type EntityEvent, type Order, type TrackingEvent, type TrackingHealth, type UserNote, type WorkspaceContext } from "@/lib/data/types";
+import { demoBreakdowns, demoEntityEvents } from "./breakdowns";
 import { getMemoryStore } from "@/lib/ingest/memory-store";
 import { addDays, dateIn, todayIn } from "@/lib/tz";
 import { DEMO_PRODUCTS, demoCampaignId, generateDemo, type DemoData } from "./generator";
 
 const TZ = "America/Cuiaba";
 
-let cache: { day: string; data: DemoData } | null = null;
-function data(): DemoData {
+let cache: { day: string; data: DemoData; breakdowns: BreakdownRow[]; events: EntityEvent[] } | null = null;
+function load() {
   const day = todayIn(TZ);
-  if (!cache || cache.day !== day) cache = { day, data: generateDemo(day) };
-  return cache.data;
+  if (!cache || cache.day !== day) {
+    const d = generateDemo(day);
+    const campaignRows = d.insights.filter((r) => r.level === "campaign" && r.date >= addDays(day, -29));
+    cache = { day, data: d, breakdowns: demoBreakdowns(campaignRows), events: demoEntityEvents(day, d.campaigns.map((c) => c.id)) };
+  }
+  return cache;
+}
+function data(): DemoData {
+  return load().data;
 }
 
 /** Repositório do modo demo — tudo fictício, mais eventos reais recebidos localmente. */
@@ -28,6 +37,7 @@ export class DemoRepository implements Repository {
         currency: "BRL",
         taxRate: 0.06,
         defaultFeeRate: 0.0699,
+        notify: DEFAULT_NOTIFY,
       },
       adAccounts: [
         {
@@ -200,6 +210,29 @@ export class DemoRepository implements Repository {
       linkClicks: ins.reduce((s, r) => s + r.linkClicks, 0),
       landingPageViews: ins.reduce((s, r) => s + r.landingPageViews, 0),
     };
+  }
+
+  async breakdowns(q: { campaignId: string; from: string; to: string }): Promise<BreakdownRow[]> {
+    return load().breakdowns.filter((r) => r.entityId === q.campaignId && r.date >= q.from && r.date <= q.to);
+  }
+
+  async entityEvents(q: { campaignId?: string; from: string; to: string }): Promise<EntityEvent[]> {
+    return load().events.filter((e) => {
+      const d = dateIn(new Date(e.eventTime), TZ);
+      return (!q.campaignId || e.campaignId === q.campaignId) && d >= q.from && d <= q.to;
+    });
+  }
+
+  async advisorReports(campaignId: string, limit = 10): Promise<AdvisorReport[]> {
+    return demoReports()
+      .filter((r) => r.campaignId === campaignId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  async alerts(): Promise<AlertRecord[]> {
+    // No demo os alertas são calculados na hora (não há histórico persistido).
+    return [];
   }
 
   async notes(campaignId?: string): Promise<UserNote[]> {

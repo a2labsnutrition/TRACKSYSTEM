@@ -1,10 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decryptSecret } from "@/lib/crypto";
+import { decryptSecret, sha256 } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import type { Level } from "@/lib/data/types";
 import { addDays, diffDays, todayIn } from "@/lib/tz";
 import { graphGetAll, MetaApiError, type GraphOptions } from "./client";
+import { activityLabel, BREAKDOWN_SPECS, isRelevantActivity, parseBreakdownRow, type RawActivity } from "./breakdowns";
 import { budgetFromMeta, fieldsForLevel, parseInsight, type RawInsight } from "./insights";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -114,6 +115,38 @@ export async function syncStructure(db: SupabaseClient, account: AccountRow, opt
     opts,
   );
   if (adsets.length) {
+    // Detecta mudanças na fase de aprendizado (vira marcador na linha do tempo)
+    const { data: prev } = await db.from("adsets").select("id, learning_stage, campaign_id").eq("workspace_id", ws);
+    const prevStage = new Map((prev ?? []).map((p: any) => [p.id, p.learning_stage]));
+    const learningEvents = adsets
+      .filter((a) => {
+        const before = prevStage.get(a.id);
+        const after = a.learning_stage_info?.status ?? null;
+        return before && after && before !== after;
+      })
+      .map((a) => {
+        const after = a.learning_stage_info.status as string;
+        const label =
+          after === "SUCCESS"
+            ? `Saiu da fase de aprendizado (${a.name})`
+            : after === "FAIL"
+              ? `Aprendizado limitado (${a.name})`
+              : after === "LEARNING"
+                ? `Voltou para a fase de aprendizado (${a.name})`
+                : `Fase de aprendizado: ${after} (${a.name})`;
+        return {
+          workspace_id: ws,
+          id: sha256(`learning|${a.id}|${after}|${now.slice(0, 10)}`),
+          campaign_id: a.campaign_id,
+          adset_id: a.id,
+          event_type: `learning_${String(after).toLowerCase()}`,
+          label,
+          source: "sync_detected",
+          event_time: now,
+        };
+      });
+    if (learningEvents.length) await db.from("entity_events").upsert(learningEvents, { onConflict: "workspace_id,id", ignoreDuplicates: true });
+
     const { error } = await db.from("adsets").upsert(
       adsets.map((a) => ({
         workspace_id: ws,
@@ -272,6 +305,116 @@ export async function syncInsights(
   return log;
 }
 
+/** Breakdowns por campanha (idade+gênero, posicionamento, dispositivo, região, horário). */
+export async function syncBreakdowns(
+  db: SupabaseClient,
+  account: AccountRow,
+  opts: GraphOptions,
+  from: string,
+  to: string,
+): Promise<SyncLog[]> {
+  const log: SyncLog[] = [];
+  for (const spec of BREAKDOWN_SPECS) {
+    const at = new Date().toISOString();
+    try {
+      const raws = await graphGetAll<Record<string, unknown>>(
+        `${account.meta_account_id}/insights`,
+        {
+          level: "campaign",
+          time_increment: 1,
+          time_range: JSON.stringify({ since: from, until: to }),
+          breakdowns: spec.breakdowns,
+          fields: spec.fields,
+          use_account_attribution_setting: "true",
+          limit: 500,
+        },
+        opts,
+        200,
+      );
+      const rows = raws.map((r) => {
+        const p = parseBreakdownRow(spec.key, r);
+        return {
+          workspace_id: account.workspace_id,
+          level: "campaign",
+          entity_id: p.entityId,
+          date: p.date,
+          breakdown: p.breakdown,
+          breakdown_value: p.value,
+          spend: p.spend,
+          impressions: p.impressions,
+          reach: p.reach,
+          link_clicks: p.linkClicks,
+          landing_page_views: p.landingPageViews,
+          initiate_checkout: p.initiateCheckout,
+          purchases: p.purchases,
+          purchase_value: p.purchaseValue,
+          raw: r,
+          synced_at: at,
+        };
+      });
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await db
+          .from("insights_breakdowns_daily")
+          .upsert(rows.slice(i, i + 500), { onConflict: "workspace_id,level,entity_id,date,breakdown,breakdown_value" });
+        if (error) throw new Error(error.message);
+      }
+      log.push({ step: `breakdown ${spec.key}`, ok: true, count: rows.length, at });
+    } catch (e) {
+      if (e instanceof MetaApiError && (e.isRateLimit || e.isTokenInvalid)) throw e;
+      // Falha parcial: o resto do painel continua funcionando
+      log.push({ step: `breakdown ${spec.key}`, ok: false, error: e instanceof MetaApiError ? e.friendly : (e as Error).message, at });
+    }
+  }
+  return log;
+}
+
+/** Atividades da conta (mudanças de orçamento, status, criativo, público) -> marcadores da linha do tempo. */
+export async function syncActivities(db: SupabaseClient, account: AccountRow, opts: GraphOptions, sinceDays = 3): Promise<SyncLog[]> {
+  const at = new Date().toISOString();
+  try {
+    const since = Math.floor((Date.now() - sinceDays * 86400_000) / 1000);
+    const acts = await graphGetAll<RawActivity>(
+      `${account.meta_account_id}/activities`,
+      { fields: "event_type,event_time,object_id,object_name,object_type,translated_event_type,extra_data", since, limit: 500 },
+      opts,
+      10,
+    );
+    const relevant = acts.filter((a) => a.event_type && a.event_time && isRelevantActivity(a.event_type));
+    if (!relevant.length) return [{ step: "atividades", ok: true, count: 0, at }];
+    const ids = [...new Set(relevant.map((a) => a.object_id).filter(Boolean))] as string[];
+    const [{ data: adsets }, { data: ads }] = await Promise.all([
+      db.from("adsets").select("id, campaign_id").eq("workspace_id", account.workspace_id).in("id", ids),
+      db.from("ads").select("id, adset_id, campaign_id").eq("workspace_id", account.workspace_id).in("id", ids),
+    ]);
+    const adsetMap = new Map((adsets ?? []).map((a: any) => [a.id, a]));
+    const adMap = new Map((ads ?? []).map((a: any) => [a.id, a]));
+    const rows = relevant.map((a) => {
+      const type = (a.object_type ?? "").toUpperCase();
+      const ad = adMap.get(a.object_id);
+      const adset = adsetMap.get(a.object_id);
+      const campaignId = type === "CAMPAIGN" ? a.object_id : ad?.campaign_id ?? adset?.campaign_id ?? null;
+      return {
+        workspace_id: account.workspace_id,
+        id: sha256(`act|${a.object_id}|${a.event_type}|${a.event_time}`),
+        campaign_id: campaignId,
+        adset_id: type === "AD_SET" || type === "ADSET" ? a.object_id : ad?.adset_id ?? null,
+        ad_id: type === "AD" ? a.object_id : null,
+        event_type: a.event_type,
+        label: activityLabel(a),
+        source: "meta_activity",
+        event_time: new Date(a.event_time!).toISOString(),
+        extra: { object_type: a.object_type, extra_data: a.extra_data ?? null },
+      };
+    });
+    const { error } = await db.from("entity_events").upsert(rows, { onConflict: "workspace_id,id", ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+    return [{ step: "atividades", ok: true, count: rows.length, at }];
+  } catch (e) {
+    if (e instanceof MetaApiError && (e.isRateLimit || e.isTokenInvalid)) throw e;
+    return [{ step: "atividades", ok: false, error: e instanceof MetaApiError ? e.friendly : (e as Error).message, at }];
+  }
+}
+
 /** Divide [from, to] em blocos de até `size` dias. */
 export function chunkRange(from: string, to: string, size = 30): Array<{ from: string; to: string }> {
   const out: Array<{ from: string; to: string }> = [];
@@ -336,9 +479,21 @@ export async function runSyncCycle(
       const gopts: GraphOptions = { accessToken: token };
       if (!account.backfill_done) await enqueueBackfill(db, account);
       const today = todayIn(account.timezone);
-      if (mode === "hourly") result.logs.push(...(await syncStructure(db, account, gopts)));
+      if (mode === "hourly") {
+        result.logs.push(...(await syncStructure(db, account, gopts)));
+        result.logs.push(...(await syncActivities(db, account, gopts, 2)));
+      }
       const from = mode === "daily" ? addDays(today, -7) : addDays(today, -1);
       result.logs.push(...(await syncInsights(db, account, gopts, from, today)));
+      // Breakdowns: diário (14 dias) ou na primeira vez que a conta sincroniza
+      const { count: bdCount } = await db
+        .from("insights_breakdowns_daily")
+        .select("entity_id", { count: "exact", head: true })
+        .eq("workspace_id", account.workspace_id);
+      if (mode === "daily" || !bdCount) {
+        result.logs.push(...(await syncBreakdowns(db, account, gopts, addDays(today, -13), today)));
+        if (mode === "daily") result.logs.push(...(await syncActivities(db, account, gopts, 8)));
+      }
       await db.from("ad_accounts").update({ last_synced_at: new Date().toISOString() }).eq("id", account.id);
       await recordJob(db, account, mode, "done", result.logs.filter((l) => !l.ok).map((l) => l.error).join("; ") || null);
     } catch (e) {

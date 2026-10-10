@@ -21,6 +21,8 @@ export interface DecisionConfig {
   minPurchasesToScale: number;
   connectRateMin: number;
   frequencyMax: number;
+  /** Gasto mínimo de teste antes de qualquer veredito (R$). 0 = usa 1,5× CPA alvo. */
+  minTestBudget: number;
 }
 
 export const DEFAULT_DECISION_CONFIG: DecisionConfig = {
@@ -32,7 +34,11 @@ export const DEFAULT_DECISION_CONFIG: DecisionConfig = {
   minPurchasesToScale: 5,
   connectRateMin: 0.75,
   frequencyMax: 2.5,
+  minTestBudget: 0,
 };
+
+/** Campos que o usuário pode ajustar por produto (as metas de CPA/ROAS ficam no produto). */
+export const RULE_OVERRIDE_KEYS = ["killSpendMultiple", "minLinkClicks", "minPurchasesToScale", "connectRateMin", "frequencyMax", "minTestBudget"] as const;
 
 /** Calcula CPA alvo/máximo a partir do valor líquido por venda e da margem desejada. */
 export function configFromProduct(p: {
@@ -40,12 +46,18 @@ export function configFromProduct(p: {
   targetCpa: number | null;
   maxCpa: number | null;
   minRoas: number | null;
+  rules?: Partial<DecisionConfig>;
 }): DecisionConfig {
   const net = p.netPerSale ?? null;
   const targetCpa = p.targetCpa ?? (net ? net * 0.5 : DEFAULT_DECISION_CONFIG.targetCpa);
   const maxCpa = p.maxCpa ?? (net ? net * 0.85 : targetCpa * 1.5);
   const minRoas = p.minRoas ?? (net && maxCpa ? net / maxCpa : DEFAULT_DECISION_CONFIG.minRoas);
-  return { ...DEFAULT_DECISION_CONFIG, targetCpa, maxCpa, minRoas };
+  const overrides: Partial<DecisionConfig> = {};
+  for (const k of RULE_OVERRIDE_KEYS) {
+    const v = p.rules?.[k];
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) overrides[k] = v;
+  }
+  return { ...DEFAULT_DECISION_CONFIG, ...overrides, targetCpa, maxCpa, minRoas };
 }
 
 export interface Signal {
@@ -71,6 +83,12 @@ export interface DecisionInput {
   trackingOk: boolean;
   learningPhase?: boolean;
   config: DecisionConfig;
+  /** Os 4 dias anteriores à janela de 3 dias (para detectar saturação). */
+  prev4d?: WindowData;
+  /** Anúncios com fadiga detectada (nomes). */
+  fatiguedAds?: string[];
+  /** Anúncios ativos com gasto nos últimos 7 dias. */
+  activeAds?: number;
 }
 
 export interface DecisionResult {
@@ -208,6 +226,36 @@ export function evaluate(input: DecisionInput): DecisionResult {
     });
   }
 
+  // ---- Saturação de público: CPM subindo + frequência alta + alcance novo caindo ----
+  if (input.prev4d && input.prev4d.meta.impressions > 2000 && w3.meta.impressions > 1500) {
+    const dp = deriveMetrics(input.prev4d.meta);
+    const cpmUp = dp.cpm && d3.cpm ? (d3.cpm - dp.cpm) / dp.cpm : null;
+    // alcance por real gasto: quanto de gente nova cada R$ compra
+    const reachPerReal3 = safeDiv(w3.meta.reachSum, w3.meta.spend);
+    const reachPerRealPrev = safeDiv(input.prev4d.meta.reachSum, input.prev4d.meta.spend);
+    const reachDrop = reachPerReal3 != null && reachPerRealPrev ? (reachPerRealPrev - reachPerReal3) / reachPerRealPrev : null;
+    if (cpmUp != null && cpmUp >= 0.2 && (d3.frequency ?? 0) >= 2 && (reachDrop ?? 0) >= 0.15) {
+      signals.push({
+        code: "saturacao_publico",
+        severity: "atencao",
+        message: `Sinais de saturação: CPM subiu ${fmtPct(cpmUp, 0)}, frequência ${fmtDec(d3.frequency, 1)} e alcance novo por R$ caiu ${fmtPct(reachDrop, 0)} vs. os 4 dias anteriores.`,
+        evidence: { cpmChange: cpmUp, frequency3d: d3.frequency, reachPerRealDrop: reachDrop },
+      });
+    }
+  }
+
+  // ---- Fadiga de criativos ----
+  const fatigued = input.fatiguedAds ?? [];
+  if (fatigued.length) {
+    const share = input.activeAds ? fatigued.length / input.activeAds : null;
+    signals.push({
+      code: "criativos_em_fadiga",
+      severity: share != null && share >= 0.5 ? "atencao" : "info",
+      message: `${fatigued.length} criativo(s) em fadiga (${fatigued.slice(0, 3).join(", ")}${fatigued.length > 3 ? "…" : ""}): prepare novos ganchos.`,
+      evidence: { fatiguedAds: fatigued.length, activeAds: input.activeAds ?? null },
+    });
+  }
+
   if (input.learningPhase) {
     signals.push({
       code: "fase_aprendizado",
@@ -226,7 +274,7 @@ export function evaluate(input: DecisionInput): DecisionResult {
 
   // Volume estatístico mínimo
   const needClicks = Math.max(0, c.minLinkClicks - w7.meta.linkClicks);
-  const spendForVerdict = c.targetCpa * 1.5;
+  const spendForVerdict = Math.max(c.minTestBudget, c.targetCpa * 1.5);
   const insufficient = purchases7 < 3 && w7.meta.linkClicks < c.minLinkClicks && w7.meta.spend < spendForVerdict;
 
   let status: DecisionStatus;

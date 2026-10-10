@@ -10,7 +10,7 @@ Responde, no primeiro olhar: **como estão minhas campanhas hoje e o que eu faç
 | Fase | Conteúdo | Status |
 | --- | --- | --- |
 | 1 | Fundação e tracking (auth, workspaces, Meta, gasto por dia, campanhas, script, Cakto, CAPI, saúde, demo) | **Entregue** |
-| 2 | Breakdowns de público, Parecer do Consultor com IA, alertas por e-mail, chat “Perguntar ao consultor” | Próxima |
+| 2 | Breakdowns de público, Parecer do Consultor com IA, alertas (painel + e-mail/Telegram), chat “Perguntar ao consultor”, eventos na linha do tempo | **Entregue** |
 | 3 | Descobrir & Criar (nichos, `AdLibraryProvider`, kit completo, prompt Lovable) | — |
 | 4 | Criativos (Google Flow assistido) e Estúdio de PDF | — |
 | 5 | Parecer vs. resultado, relatórios semanais, multiusuário | — |
@@ -20,7 +20,7 @@ Responde, no primeiro olhar: **como estão minhas campanhas hoje e o que eu faç
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm test           # 44 testes (métricas, regras, atribuição, idempotência, deduplicação, SQL/RLS)
+npm test           # 55 testes (métricas, regras, atribuição, idempotência, deduplicação, SQL/RLS, públicos, alertas, parecer)
 ```
 
 Sem Supabase configurado o app abre em **modo demonstração**: dados fictícios (claramente sinalizados) e um site/segredo de teste
@@ -31,12 +31,33 @@ para você experimentar o script e o webhook localmente:
 
 Os eventos aparecem em **Saúde do tracking → Eventos em tempo real** e as vendas em **Vendas** (ficam só na memória do servidor).
 
+## Fase 2 — Inteligência
+
+- **Análise de públicos** (página da campanha): idade, gênero, idade+gênero, posicionamento, dispositivo, região, horário e dia da semana,
+  com selos “converte barato”, “caro” e “queima dinheiro”. Sincronizado uma vez por dia (últimos 14 dias). Compras aqui são as do Meta,
+  porque a Cakto não informa idade/posicionamento.
+- **Motor de decisão**: além dos sinais da Fase 1, detecta saturação de público (CPM ↑ + frequência + alcance novo ↓), fadiga de criativos,
+  pacing do dia e usa metas ajustáveis por produto (kill, frequência máxima, volume mínimo, orçamento mínimo de teste) em Configurações.
+- **Parecer do Consultor**: a IA recebe o retrato completo já calculado (janelas 1/3/7 dias, funil, série diária, conjuntos, anúncios,
+  públicos, eventos, tracking e o parecer anterior) e devolve o parecer na estrutura fixa (veredito, diagnóstico em 3 linhas, gargalo,
+  plano de 3–7 dias, testes, riscos, o que não mexer, 3 caminhos, próximos criativos). Saída estruturada validada por schema; fallback
+  de recusa no servidor ativado (`fallbacks: "default"`). Cada parecer fica salvo com o retrato de entrada, para comparar depois.
+  Sem `ANTHROPIC_API_KEY`, o sistema gera um **parecer automático das regras** (mais simples) e avisa.
+- **Perguntar ao consultor**: chat com streaming e todos os dados da campanha.
+- **Alertas**: CPA acima da meta, ROAS baixo, gasto sem venda, frequência, saturação, fadiga, queda de entrega, anúncio reprovado,
+  conta com problema, cliques sem visualização da página, webhook/script parado, token expirando, falhas de CAPI e atribuição baixa.
+  Ficam abertos até a condição sumir; notificação por e-mail (Resend) e Telegram só quando o alerta é novo.
+- **Linha do tempo**: mudanças de orçamento, status, criativo e público vindas do Meta (atividades da conta) e saída/limitação da fase de
+  aprendizado detectada no sync, além das suas anotações.
+
 ## Colocar em produção
 
 1. **Supabase**: crie um projeto. Em *SQL Editor*, rode `supabase/migrations/0001_init.sql` (ou `supabase db push`).
    Em *Authentication → URL Configuration*, coloque a URL do app e `https://SEU-APP/auth/callback` como redirect.
 2. **Vercel**: importe o repositório e configure as variáveis do `.env.example`.
    Gere `ENCRYPTION_KEY` com `openssl rand -base64 32` e um `CRON_SECRET` qualquer.
+   A geração do Parecer pode levar 1–2 min (`maxDuration = 300` na página da campanha); se o seu plano limitar menos que isso,
+   use `ANTHROPIC_EFFORT=medium`.
    O `vercel.json` agenda o sync de hora em hora e o reprocessamento diário — **o plano Hobby só permite cron diário**;
    no Hobby, o sync horário precisa do plano Pro ou de um agendador externo chamando `/api/cron/meta-sync?mode=hourly`
    com `Authorization: Bearer <CRON_SECRET>`.
@@ -53,7 +74,9 @@ Os eventos aparecem em **Saúde do tracking → Eventos em tempo real** e as ven
 | Meta | Token da API de Conversões (Gerenciador de Eventos) | Opcional (senão usa o token principal, que precisa ter acesso ao Pixel) |
 | Cakto | **Segredo do webhook** (gerado ao criar o webhook) | Sim |
 | Cakto | client_id/client_secret da API | Opcional (conciliação) |
-| Anthropic | `ANTHROPIC_API_KEY` | A partir da Fase 2 |
+| Anthropic | `ANTHROPIC_API_KEY` | Para o Parecer da IA e o chat (sem ela, parecer automático das regras) |
+| Resend | `RESEND_API_KEY` + `ALERTS_FROM_EMAIL` (domínio verificado) | Opcional — alertas por e-mail |
+| Telegram | `TELEGRAM_BOT_TOKEN` (via @BotFather) | Opcional — alertas no celular |
 
 Tokens e segredos são salvos **criptografados (AES-256-GCM)** e a coluna é inacessível ao navegador (testado).
 
@@ -68,6 +91,8 @@ Tokens e segredos são salvos **criptografados (AES-256-GCM)** e a coluna é ina
 | Repasse de parâmetros ao checkout | A Cakto não documenta publicamente quais parâmetros de URL devolve no webhook. | O script anexa UTMs + `sck=<sessão>` (configurável); o parser procura em vários campos e na `checkoutUrl`. Se nada voltar, a atribuição cai para fbclid → e-mail/telefone com hash → janela de tempo, registrando método e confiança. |
 | Purchase em dobro | Se o Pixel também estiver configurado dentro da Cakto com evento de compra, os `event_id` são diferentes e o Meta conta duas vezes. | Aviso na tela de Conexões: desative o Purchase do Pixel na Cakto e deixe a CAPI enviar. |
 | Alcance/frequência do período | Alcance não é somável entre dias. | Frequência exibida como aproximação (impressões ÷ soma do alcance diário), com aviso no tooltip. |
+| Alertas por WhatsApp | Exige a API oficial do WhatsApp Business (aprovação da Meta). | Telegram como canal de celular; e-mail via Resend. |
+| Breakdowns por região | O Meta limita conversões em alguns detalhamentos por privacidade. | Mostra o que vier, com aviso na aba Região; falha de um breakdown não derruba os outros. |
 | Verificador na Vercel | Não há navegador headless na Vercel por padrão. | Modo HTML estático + painel de eventos ao vivo. Com Chromium disponível (`CHROMIUM_PATH`), usa o modo navegador. |
 
 ## Arquitetura

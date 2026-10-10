@@ -1,5 +1,5 @@
 import { getRepository } from "@/lib/data";
-import { configFromProduct } from "@/lib/decision/rules";
+import { configFromProduct, DEFAULT_DECISION_CONFIG } from "@/lib/decision/rules";
 import { fmtBRL, fmtDec, fmtRoas } from "@/lib/format";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/layout/page-header";
@@ -112,6 +112,7 @@ export default async function Configuracoes() {
 
 function ProductForm({ product, disabled, reason }: { product?: Product; disabled: boolean; reason: string }) {
   const v = (n: number | null | undefined) => (n == null ? "" : fmtDec(n, 2));
+  const r = product?.rules;
   return (
     <ActionForm action={saveProduct} submitLabel={product ? "Salvar produto" : "Criar produto"} disabled={disabled} disabledReason={reason} variant={product ? "secondary" : "primary"}>
       {product ? <input type="hidden" name="id" value={product.id} /> : null}
@@ -145,6 +146,35 @@ function ProductForm({ product, disabled, reason }: { product?: Product; disable
           <Input name="minRoas" defaultValue={v(product?.minRoas)} placeholder="automático" inputMode="decimal" />
         </div>
       </div>
+      <details className="rounded-lg border border-border p-3">
+        <summary className="cursor-pointer text-xs font-medium text-muted">Regras de decisão (avançado — vazio usa o padrão)</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label>Kill: gasto sem venda (× CPA alvo)</Label>
+            <Input name="killSpendMultiple" defaultValue={v(r?.killSpendMultiple)} placeholder={fmtDec(DEFAULT_DECISION_CONFIG.killSpendMultiple, 1)} inputMode="decimal" />
+          </div>
+          <div>
+            <Label>Frequência máxima</Label>
+            <Input name="frequencyMax" defaultValue={v(r?.frequencyMax)} placeholder={fmtDec(DEFAULT_DECISION_CONFIG.frequencyMax, 1)} inputMode="decimal" />
+          </div>
+          <div>
+            <Label>Vendas mínimas p/ escalar (7d)</Label>
+            <Input name="minPurchasesToScale" defaultValue={r?.minPurchasesToScale ?? ""} placeholder={String(DEFAULT_DECISION_CONFIG.minPurchasesToScale)} inputMode="numeric" />
+          </div>
+          <div>
+            <Label>Cliques mínimos p/ veredito</Label>
+            <Input name="minLinkClicks" defaultValue={r?.minLinkClicks ?? ""} placeholder={String(DEFAULT_DECISION_CONFIG.minLinkClicks)} inputMode="numeric" />
+          </div>
+          <div>
+            <Label>Connect rate mínimo (%)</Label>
+            <Input name="connectRateMin" defaultValue={r?.connectRateMin != null ? fmtDec(r.connectRateMin * 100, 0) : ""} placeholder={fmtDec(DEFAULT_DECISION_CONFIG.connectRateMin * 100, 0)} inputMode="decimal" />
+          </div>
+          <div>
+            <Label>Orçamento mínimo de teste (R$)</Label>
+            <Input name="minTestBudget" defaultValue={v(r?.minTestBudget)} placeholder="1,5× CPA alvo" inputMode="decimal" />
+          </div>
+        </div>
+      </details>
     </ActionForm>
   );
 }

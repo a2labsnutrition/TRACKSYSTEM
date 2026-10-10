@@ -1,13 +1,18 @@
-import { AlertOctagon, AlertTriangle, ArrowLeft, CheckCircle2, Film, Image as ImageIcon, Info, Sparkles } from "lucide-react";
+import { AlertOctagon, AlertTriangle, ArrowLeft, CheckCircle2, Film, Gauge, Image as ImageIcon, Info, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { campaignDetail } from "@/lib/analytics";
 import { getRepository } from "@/lib/data";
+import { env } from "@/lib/env";
 import { STATUS_LABEL } from "@/lib/decision/rules";
 import { fmtBRL, fmtDate, fmtDec, fmtInt, fmtPct, fmtRoas } from "@/lib/format";
 import { periodFrom, withPeriod, type SearchParams } from "@/lib/page";
 import { todayIn } from "@/lib/tz";
 import { cn } from "@/lib/utils";
+import { ChatPanel } from "@/components/advisor/chat-panel";
+import { GenerateParecerForm } from "@/components/advisor/generate-form";
+import { ParecerView } from "@/components/advisor/parecer-view";
+import { AudienceAnalysis } from "@/components/audience-analysis";
 import { TimelineChart } from "@/components/charts/timeline-chart";
 import { DecisionBadge } from "@/components/decision-badge";
 import { PageHeader } from "@/components/layout/page-header";
@@ -27,13 +32,19 @@ const RANK_LABEL: Record<string, { label: string; tone: "good" | "bad" | "neutra
   BELOW_AVERAGE_10: { label: "Abaixo (10% piores)", tone: "bad" },
 };
 
+// A geração do Parecer (server action desta página) pode levar 1–2 min com esforço "high".
+export const maxDuration = 300;
+
 export default async function CampanhaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { id } = await params;
   const repo = await getRepository();
   const ctx = await repo.context();
   const period = periodFrom(await searchParams, ctx.workspace.timezone);
-  const d = await campaignDetail(repo, id, period);
+  const [d, reports] = await Promise.all([campaignDetail(repo, id, period), repo.advisorReports(id, 10)]);
   if (!d) notFound();
+  const latest = reports[0] ?? null;
+  const periodParams: Record<string, string> = { p: period.key, ...(period.key === "custom" ? { from: period.from, to: period.to } : {}) };
+  const hasAi = Boolean(env.anthropicApiKey);
   const { campaign, row, k, funnel, leak } = d;
   const dec = row.decision;
   const maxFunnel = Math.max(1, funnel[0].value);
@@ -65,17 +76,20 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
         ]
           .filter(Boolean)
           .join(" · ")}
-        actions={<PeriodPicker current={period.key} from={period.from} to={period.to} />}
+        actions={
+          <>
+            <ChatPanel campaignId={campaign.id} period={periodParams} enabled={hasAi} />
+            <PeriodPicker current={period.key} from={period.from} to={period.to} />
+          </>
+        }
       />
 
-      {/* -------- Parecer do Consultor (camada determinística) -------- */}
+      {/* -------- Sinais das regras (camada 1) -------- */}
       <Card className="mb-5 overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-border bg-panel-2/50 px-4 py-3">
           <DecisionBadge status={dec.status} large />
           <span className="text-xs text-muted">Confiança {dec.confidence}</span>
-          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-faint">
-            <Sparkles className="h-3.5 w-3.5" /> Parecer escrito pela IA chega na Fase 2 — abaixo, os sinais calculados pelas regras.
-          </span>
+          <span className="ml-auto text-xs text-faint">Veredito das regras · atualizado a cada sincronização</span>
         </div>
         <CardBody>
           <p className="text-base font-medium">
@@ -112,7 +126,7 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
               })}
             </ul>
           ) : null}
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
             {[
               ["Hoje", row.w1],
               ["3 dias", row.w3],
@@ -131,7 +145,60 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
                 </div>
               );
             })}
+            <div className="rounded-lg border border-border bg-bg/40 px-3 py-2">
+              <p className="flex items-center gap-1 text-faint">
+                <Gauge className="h-3.5 w-3.5" /> Pacing hoje <InfoTip metric="pacing" />
+              </p>
+              {d.pacing ? (
+                <>
+                  <p className="tabular">
+                    {fmtBRL(d.pacing.spentToday)} de {fmtBRL(d.pacing.dailyBudget)} ({fmtPct(d.pacing.pctOfBudget, 0)})
+                  </p>
+                  <p className={cn("tabular", d.pacing.projectedEndOfDay != null && d.pacing.projectedEndOfDay > d.pacing.dailyBudget * 1.15 ? "text-warn" : "text-muted")}>
+                    Projeção: {fmtBRL(d.pacing.projectedEndOfDay)} · {fmtPct(d.pacing.dayElapsed, 0)} do dia
+                  </p>
+                </>
+              ) : (
+                <p className="text-muted">Sem orçamento diário definido</p>
+              )}
+            </div>
           </div>
+        </CardBody>
+      </Card>
+
+      {/* -------- Parecer do Consultor (camada 2: IA) -------- */}
+      <Card className="mb-5" id="parecer">
+        <CardHeader
+          title={
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-violet" /> Parecer do Consultor
+            </span>
+          }
+          description={
+            hasAi
+              ? "A IA lê os números e sinais acima e escreve o plano para os próximos 3 a 7 dias. Cada parecer fica salvo para comparar com o que aconteceu depois."
+              : "Sem ANTHROPIC_API_KEY: o parecer é montado só com as regras (mais simples). Configure a chave para o parecer completo da IA."
+          }
+          action={<GenerateParecerForm campaignId={campaign.id} period={periodParams} hasAi={hasAi} label={latest ? "Gerar novo parecer" : "Gerar parecer"} />}
+        />
+        <CardBody>
+          {latest ? (
+            <ParecerView report={latest} tz={ctx.workspace.timezone} />
+          ) : (
+            <p className="text-sm text-muted">Nenhum parecer ainda para esta campanha. Clique em “Gerar parecer”.</p>
+          )}
+          {reports.length > 1 ? (
+            <details className="mt-6 rounded-lg border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium">Pareceres anteriores ({reports.length - 1})</summary>
+              <div className="mt-4 space-y-8">
+                {reports.slice(1).map((r) => (
+                  <div key={r.id} className="border-t border-border pt-4">
+                    <ParecerView report={r} tz={ctx.workspace.timezone} />
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </CardBody>
       </Card>
 
@@ -184,19 +251,36 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
 
         {/* -------- Linha do tempo -------- */}
         <Card className="xl:col-span-3">
-          <CardHeader title="Linha do tempo diária" description="Linhas tracejadas: suas anotações e criativos novos" />
+          <CardHeader title="Linha do tempo diária" description="Linhas tracejadas: mudanças de orçamento, criativos, aprendizado e suas anotações" />
           <CardBody>
             <TimelineChart data={d.timeline} markers={d.markers} />
           </CardBody>
         </Card>
       </div>
 
-      {/* -------- Conjuntos / públicos -------- */}
+      {/* -------- Análise de públicos (breakdowns) -------- */}
       <Card className="mt-5">
-        <CardHeader
-          title="Conjuntos e públicos"
-          description="Onde converte barato e onde queima dinheiro. Detalhamento por idade, gênero, região, posicionamento e horário chega na Fase 2."
-        />
+        <CardHeader title="Análise de públicos" description="Onde converte barato e onde queima dinheiro — por idade, gênero, posicionamento, dispositivo, região, horário e dia da semana." />
+        {d.highlights.length ? (
+          <ul className="space-y-1 border-b border-border px-4 py-3 text-sm">
+            {d.highlights.map((h, i) => (
+              <li key={i} className="flex gap-2">
+                <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", /queima|caro/.test(h) ? "bg-bad" : "bg-good")} />
+                {h}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {d.hasBreakdowns ? (
+          <AudienceAnalysis tables={d.audience} />
+        ) : (
+          <p className="p-4 text-sm text-muted">Sem detalhamentos ainda. Eles são sincronizados uma vez por dia (últimos 14 dias) — ou clique em “Sincronizar agora” em Conexões.</p>
+        )}
+      </Card>
+
+      {/* -------- Conjuntos -------- */}
+      <Card className="mt-5">
+        <CardHeader title="Conjuntos de anúncios" description="Desempenho real (Cakto) por conjunto" />
         <TableWrap>
           <Table>
             <thead>

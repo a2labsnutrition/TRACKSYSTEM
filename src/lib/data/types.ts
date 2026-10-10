@@ -1,3 +1,6 @@
+import type { ParecerContent } from "@/lib/advisor/schema";
+import type { DecisionConfig, DecisionStatus } from "@/lib/decision/rules";
+
 /** Tipos de domínio compartilhados entre modo demo, Supabase e UI. */
 
 export type Level = "account" | "campaign" | "adset" | "ad";
@@ -11,7 +14,16 @@ export interface Workspace {
   taxRate: number;
   /** Taxa padrão do gateway quando a Cakto não informa o líquido (0.0699 = 6,99%). */
   defaultFeeRate: number;
+  notify: NotifySettings;
 }
+
+export interface NotifySettings {
+  emails: string[];
+  telegramChatId: string | null;
+  minSeverity: "critico" | "atencao";
+}
+
+export const DEFAULT_NOTIFY: NotifySettings = { emails: [], telegramChatId: null, minSeverity: "atencao" };
 
 export interface AdAccount {
   id: string; // uuid interno
@@ -32,6 +44,8 @@ export interface Product {
   maxCpa: number | null;
   minRoas: number | null;
   caktoProductIds: string[];
+  /** Ajustes das regras de decisão para este produto (kill, frequência, volume mínimo...). */
+  rules?: Partial<DecisionConfig>;
 }
 
 export interface Campaign {
@@ -246,4 +260,65 @@ export interface WorkspaceContext {
   workspace: Workspace;
   adAccounts: AdAccount[];
   userEmail: string | null;
+}
+
+// ----------------------------- Fase 2 -----------------------------
+
+export type BreakdownKey = "age" | "gender" | "age_gender" | "placement" | "device" | "region" | "hour";
+
+export interface BreakdownRow {
+  breakdown: BreakdownKey;
+  value: string;
+  entityId: string;
+  date: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  linkClicks: number;
+  landingPageViews: number;
+  initiateCheckout: number;
+  purchases: number;
+  purchaseValue: number;
+}
+
+export interface EntityEvent {
+  id: string;
+  campaignId: string | null;
+  adsetId: string | null;
+  adId: string | null;
+  eventType: string;
+  label: string;
+  source: "meta_activity" | "sync_detected";
+  eventTime: string;
+}
+
+export interface AdvisorReport {
+  id: string;
+  campaignId: string;
+  reportDate: string;
+  createdAt: string;
+  /** Veredito do consultor (IA ou fallback). */
+  status: DecisionStatus;
+  /** Veredito do motor de regras no momento do parecer. */
+  rulesStatus: DecisionStatus | null;
+  confidence: string | null;
+  model: string;
+  content: ParecerContent;
+}
+
+export type AlertSeverity = "critico" | "atencao" | "info";
+
+export interface AlertRecord {
+  id: string;
+  type: string;
+  severity: AlertSeverity;
+  entityLevel: string | null;
+  entityId: string | null;
+  title: string;
+  message: string;
+  href: string | null;
+  status: "open" | "resolved";
+  createdAt: string;
+  resolvedAt: string | null;
+  notifiedAt: string | null;
 }
