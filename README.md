@@ -50,6 +50,23 @@ Os eventos aparecem em **Saúde do tracking → Eventos em tempo real** e as ven
 - **Linha do tempo**: mudanças de orçamento, status, criativo e público vindas do Meta (atividades da conta) e saída/limitação da fase de
   aprendizado detectada no sync, além das suas anotações.
 
+## Auditoria de confiabilidade (diagnósticos e recomendações)
+
+Relatório completo, com evidências, priorização, testes e limitações: [`docs/AUDITORIA.md`](docs/AUDITORIA.md).
+
+- **Consultivo**: o sistema nunca altera campanhas, orçamentos ou anúncios — você decide e executa.
+- **Moeda**: conta de anúncios em US$ (ou outra) é convertida para R$ (PTAX do Banco Central ou taxa manual + IOF/spread) e marcada
+  como estimada. Sem cotação, o gasto não é somado e o painel avisa. Configure em Configurações → Contas de anúncio e câmbio.
+- **Compras**: só a compra do produto principal conta. Order bumps e upsells entram no faturamento, não no CPA.
+- **Financeiro**: faturamento bruto, reembolsos, taxas, impostos, custos variáveis por produto, *faturamento − tráfego* e *lucro de
+  contribuição* (nenhum dos dois é lucro líquido), CPA e ROAS de equilíbrio.
+- **Atribuição**: confirmada / provável / desconhecida. Venda sem origem nunca vai para o criativo que gastou mais.
+- **Decisão com incerteza**: intervalo de 95% do CPA contra o CPA de equilíbrio; confiança baixa/moderada/alta com critérios visíveis;
+  sem escala com menos de 3 dias, confiança baixa ou tracking com problema. Na dúvida: “Dados insuficientes para recomendar
+  escalonamento.”
+- **Criativos e anomalias**: comparação estatística entre criativos e detecção de anomalias que separa ruído de problema real.
+- **Ver o caso real**: no modo demo, clique em “Caso real (dia 1, US$)” no banner.
+
 ## Colocar em produção
 
 1. **Supabase**: crie um projeto. Em *SQL Editor*, rode `supabase/migrations/0001_init.sql` (ou `supabase db push`).

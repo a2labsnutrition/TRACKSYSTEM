@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
-import { DEMO_COOKIE } from "@/lib/data";
+import { DEMO_COOKIE, SCENARIO_COOKIE } from "@/lib/data";
 
-/** Liga/desliga o modo demo (cookie). */
+const COOKIE = { path: "/", httpOnly: true, sameSite: "lax" as const, maxAge: 60 * 60 * 24 * 30 };
+
+/** Liga/desliga o modo demo e escolhe o cenário (cookies). */
 export async function POST(req: Request) {
   const form = await req.formData();
-  const on = form.get("on") === "1";
   const res = NextResponse.redirect(new URL("/", req.url), 303);
-  if (on) res.cookies.set(DEMO_COOKIE, "1", { path: "/", httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
+  const scenario = form.get("cenario");
+  if (scenario != null) {
+    if (scenario === "caso-real") res.cookies.set(SCENARIO_COOKIE, "caso-real", COOKIE);
+    else res.cookies.delete(SCENARIO_COOKIE);
+    return res;
+  }
+  const on = form.get("on") === "1";
+  if (on) res.cookies.set(DEMO_COOKIE, "1", COOKIE);
   else res.cookies.delete(DEMO_COOKIE);
   return res;
 }

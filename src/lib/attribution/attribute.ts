@@ -1,4 +1,4 @@
-import type { AttributionMethod } from "@/lib/data/types";
+import type { AttributionLevel, AttributionMethod } from "@/lib/data/types";
 
 /**
  * Atribuição de vendas da Cakto a campanha/conjunto/anúncio.
@@ -8,9 +8,13 @@ import type { AttributionMethod } from "@/lib/data/types";
  *  2. utm_ids — o pedido trouxe UTMs com IDs do Meta ({{campaign.id}} etc.) → 0,9
  *  3. fbclid — fbclid/fbc do pedido casa com uma sessão rastreada → 0,85
  *  4. email_hash / phone_hash — e-mail/telefone (hash) casa com evento anterior → 0,7 / 0,65
- *  5. time_window — único clique de checkout em X min antes do pedido → 0,4
- *     (vários cliques no intervalo: o mais recente, 0,25)
- * Sem origem: "unattributed" (nunca descartar).
+ *  5. time_window — ÚNICO clique de checkout em X min antes do pedido → 0,4.
+ *     Vários cliques no intervalo = ambíguo → NÃO atribui (escolher um seria chute).
+ * Sem origem: "unattributed" (nunca descartar). Nunca atribuímos uma venda a um
+ * anúncio por ele ter recebido mais orçamento.
+ *
+ * Níveis: confirmada (vínculo determinístico: sessão no checkout ou IDs nas UTMs),
+ * provável (fbclid, e-mail/telefone, janela única), desconhecida (sem origem).
  */
 
 export interface SessionRef {
@@ -52,6 +56,8 @@ export interface AttributionLookup {
 }
 
 export interface AttributionResult {
+  /** Quantas sessões candidatas havia quando a janela de tempo foi ambígua. */
+  ambiguous?: number;
   method: AttributionMethod;
   confidence: number;
   session: SessionRef | null;
@@ -163,7 +169,7 @@ export async function attributeOrder(
     const clicks = await lookup.checkoutClicksBetween(from.toISOString(), to.toISOString());
     const unique = dedupeSessions(clicks);
     if (unique.length === 1) return result("time_window", 0.4, unique[0]);
-    if (unique.length > 1) return result("time_window", 0.25, unique[0]);
+    if (unique.length > 1) return { ...result("unattributed", 0, null), ambiguous: unique.length };
   }
 
   // UTMs sem IDs ainda contam como origem conhecida, mas sem anúncio
@@ -192,4 +198,16 @@ export const ATTRIBUTION_LABEL: Record<AttributionMethod, string> = {
   phone_hash: "Telefone (hash)",
   time_window: "Janela de tempo",
   unattributed: "Não atribuída",
+};
+
+export function attributionLevel(method: AttributionMethod): AttributionLevel {
+  if (method === "checkout_param" || method === "utm_ids") return "confirmada";
+  if (method === "unattributed") return "desconhecida";
+  return "provavel";
+}
+
+export const LEVEL_LABEL: Record<AttributionLevel, string> = {
+  confirmada: "Confirmada",
+  provavel: "Provável",
+  desconhecida: "Desconhecida",
 };

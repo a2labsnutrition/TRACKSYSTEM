@@ -47,10 +47,13 @@ const PROFILES: Profile[] = [
 ];
 
 export const DEMO_PRODUCTS: Product[] = [
-  { id: "p1", name: "EmagrecePro (curso)", price: 97, netPerSale: 89.5, targetCpa: 45, maxCpa: 70, minRoas: 1.4, caktoProductIds: ["demo_prod_1"] },
-  { id: "p2", name: "Receitas Fit (e-book)", price: 47, netPerSale: 43.3, targetCpa: 25, maxCpa: 38, minRoas: 1.2, caktoProductIds: ["demo_prod_2"] },
-  { id: "p3", name: "Mentoria VIP", price: 497, netPerSale: 462, targetCpa: 220, maxCpa: 350, minRoas: 1.3, caktoProductIds: ["demo_prod_3"] },
+  { id: "p1", name: "EmagrecePro (curso)", price: 97, netPerSale: 89.5, targetCpa: null, maxCpa: null, minRoas: null, caktoProductIds: ["demo_prod_1"], kind: "principal", costPerSale: 2, costPct: 0 },
+  { id: "p2", name: "Receitas Fit (e-book)", price: 47, netPerSale: 43.3, targetCpa: null, maxCpa: null, minRoas: null, caktoProductIds: ["demo_prod_2"], kind: "principal", costPerSale: 0, costPct: 0 },
+  { id: "p3", name: "Mentoria VIP", price: 497, netPerSale: 462, targetCpa: null, maxCpa: 350, minRoas: null, caktoProductIds: ["demo_prod_3"], kind: "principal", costPerSale: 40, costPct: 0.1 },
+  { id: "p4", name: "Guia de Lanches (order bump)", price: 19.9, netPerSale: 18.1, targetCpa: null, maxCpa: null, minRoas: null, caktoProductIds: ["demo_bump_1"], kind: "order_bump", costPerSale: 0, costPct: 0 },
 ];
+
+const BUMP_PRICE = 19.9;
 
 export interface DemoData {
   campaigns: Campaign[];
@@ -169,6 +172,7 @@ export function generateDemo(today: string, accountId = "demo-account"): DemoDat
           insights.push({
             level: "ad",
             entityId: adId,
+            adAccountId: accountId,
             campaignId,
             adsetId,
             date,
@@ -207,7 +211,10 @@ export function generateDemo(today: string, accountId = "demo-account"): DemoDat
             const createdAt = `${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00-04:00`;
             const attributed = rnd() < 0.92;
             const methodAttr = attributed ? (rnd() < 0.8 ? "checkout_param" : rnd() < 0.5 ? "fbclid" : "email_hash") : "unattributed";
-            const fee = round2(p.price * (method === "credit_card" ? 0.0799 : 0.0599) + 0.99);
+            // ~35% das compras do EmagrecePro levam o order bump no mesmo pedido
+            const bump = p.productId === "p1" && rnd() < 0.35 ? BUMP_PRICE : 0;
+            const gross = round2(p.price + bump);
+            const fee = round2(gross * (method === "credit_card" ? 0.0799 : 0.0599) + 0.99);
             const refunded = paid && rnd() < 0.03;
             orders.push({
               id: `o${orderSeq}`,
@@ -216,13 +223,17 @@ export function generateDemo(today: string, accountId = "demo-account"): DemoDat
               productName: product.name,
               status: refunded ? "refunded" : paid ? "paid" : "pending",
               paymentMethod: method,
-              grossAmount: p.price,
+              grossAmount: gross,
               fees: fee,
-              netAmount: round2(p.price - fee),
+              netAmount: round2(gross - fee),
               currency: "BRL",
               coupon: null,
               isOrderBump: false,
               isUpsell: false,
+              orderKind: "main",
+              mainAmount: p.price,
+              bumpAmount: bump,
+              upsellAmount: 0,
               customerEmail: `cliente${orderSeq}@exemplo.com`,
               createdAt: new Date(createdAt).toISOString(),
               paidAt: paid ? new Date(createdAt).toISOString() : null,

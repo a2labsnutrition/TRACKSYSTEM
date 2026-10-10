@@ -68,13 +68,13 @@ export default async function GastoDiario({ searchParams }: { searchParams: Sear
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Summary label="Gasto no período" value={fmtBRL(m.grandTotal)} />
-        <Summary label="Receita líquida" value={fmtBRL(totalRevenue)} />
-        <Summary label="Lucro" value={fmtBRL(totalProfit)} tone={totalProfit < 0 ? "bad" : "good"} />
-        <Summary label="ROAS real" value={fmtRoas(m.grandTotal ? totalRevenue / m.grandTotal : null)} sub={`${fmtInt(totalPurchases)} vendas pagas`} />
+        <Summary label="Faturamento bruto" value={fmtBRL(totalRevenue)} />
+        <Summary label="Contribuição (est.)" value={fmtBRL(totalProfit)} tone={totalProfit < 0 ? "bad" : "good"} />
+        <Summary label="ROAS bruto" value={fmtRoas(m.grandTotal ? totalRevenue / m.grandTotal : null)} sub={`${fmtInt(totalPurchases)} compras principais`} />
       </div>
 
       <Card className="mb-5">
-        <CardHeader title="Gasto × receita × lucro" description={campaignId ? "Receita das vendas atribuídas à campanha selecionada" : "Receita de todas as vendas pagas"} />
+        <CardHeader title="Gasto × faturamento × contribuição" description={campaignId ? "Faturamento das vendas atribuídas à campanha selecionada" : "Faturamento de todas as vendas aprovadas"} />
         <CardBody>
           <SpendRevenueChart data={m.daily} height={260} />
         </CardBody>
@@ -122,20 +122,20 @@ export default async function GastoDiario({ searchParams }: { searchParams: Sear
       </Card>
 
       <Card>
-        <CardHeader title="Resumo diário" description="Gasto, receita, lucro e acumulados" />
+        <CardHeader title="Resumo diário" description="Gasto, faturamento, lucro de contribuição estimado e acumulados" />
         <TableWrap>
           <Table>
             <thead>
               <tr>
                 <Th>Dia</Th>
                 <Th className="text-right">Gasto</Th>
-                <Th className="text-right">Receita líq.</Th>
-                <Th className="text-right">Lucro</Th>
+                <Th className="text-right">Faturamento</Th>
+                <Th className="text-right">Contribuição</Th>
                 <Th className="text-right">Vendas</Th>
-                <Th className="text-right">CPA real</Th>
-                <Th className="text-right">ROAS real</Th>
+                <Th className="text-right">CPA</Th>
+                <Th className="text-right">ROAS bruto</Th>
                 <Th className="text-right">Gasto acum.</Th>
-                <Th className="text-right">Lucro acum.</Th>
+                <Th className="text-right">Contrib. acum.</Th>
               </tr>
             </thead>
             <tbody>

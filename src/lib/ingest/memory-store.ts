@@ -1,4 +1,4 @@
-import type { TrackingSite } from "@/lib/data/types";
+import type { ProductKind, TrackingSite } from "@/lib/data/types";
 import type {
   CapiConfig,
   CapiLogEntry,
@@ -29,7 +29,7 @@ export class MemoryIngestStore implements IngestStore {
   cakto = new Map<string, { secret: string; secretHash: string }>(); // por workspace
   capi = new Map<string, CapiConfig>();
   settings = new Map<string, WorkspaceSettings>();
-  productMap = new Map<string, string>(); // `${ws}|${caktoProductId}` -> productId
+  productMap = new Map<string, { id: string; kind: ProductKind }>(); // `${ws}|${caktoProductId}` -> produto
   data = new Map<string, WsData>();
   private seq = 0;
 
@@ -119,7 +119,7 @@ export class MemoryIngestStore implements IngestStore {
   async upsertOrder(workspaceId: string, o: OrderRecord) {
     this.ws(workspaceId).orders.set(o.externalId, { ...o });
   }
-  async productIdForCakto(workspaceId: string, caktoProductId: string | null) {
+  async productForCakto(workspaceId: string, caktoProductId: string | null) {
     if (!caktoProductId) return null;
     return this.productMap.get(`${workspaceId}|${caktoProductId}`) ?? null;
   }

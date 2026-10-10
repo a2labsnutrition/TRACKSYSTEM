@@ -141,9 +141,26 @@ async function applyCaktoEvent(
     const phoneHash = hashPhone(parsed.customerPhone);
     const createdAt = existing?.createdAt ?? parsed.createdAt ?? new Date().toISOString();
 
+    // Papel do pedido: o produto cadastrado como order bump/upsell manda; senão, o que o payload disser.
+    const product = await store.productForCakto(workspaceId, parsed.productExternalId);
+    const kindFromProduct = product?.kind === "order_bump" ? "bump" : product?.kind === "upsell" ? "upsell" : null;
+    const orderKind = existing?.orderKind && existing.orderKind !== "main" ? existing.orderKind : kindFromProduct ?? parsed.orderKind;
+    const gross = parsed.grossAmount || existing?.grossAmount || 0;
+    const parts =
+      orderKind === "main"
+        ? {
+            mainAmount: parsed.grossAmount ? parsed.mainAmount : existing?.mainAmount ?? gross,
+            bumpAmount: parsed.grossAmount ? parsed.bumpAmount : existing?.bumpAmount ?? 0,
+            upsellAmount: parsed.grossAmount ? parsed.upsellAmount : existing?.upsellAmount ?? 0,
+          }
+        : { mainAmount: 0, bumpAmount: orderKind === "bump" ? gross : 0, upsellAmount: orderKind === "upsell" ? gross : 0 };
+
     const order: OrderRecord = {
       externalId,
-      productId: existing?.productId ?? (await store.productIdForCakto(workspaceId, parsed.productExternalId)),
+      orderKind,
+      ...parts,
+      items: parsed.items.length ? parsed.items : existing?.items ?? null,
+      productId: existing?.productId ?? product?.id ?? null,
       productExternalId: parsed.productExternalId ?? existing?.productExternalId ?? null,
       productName: parsed.productName ?? existing?.productName ?? null,
       offerId: parsed.offerId ?? existing?.offerId ?? null,
@@ -155,8 +172,8 @@ async function applyCaktoEvent(
       netEstimated: parsed.grossAmount ? !netKnown : existing?.netEstimated ?? false,
       currency: parsed.currency,
       coupon: parsed.coupon ?? existing?.coupon ?? null,
-      isOrderBump: parsed.isOrderBump || Boolean(existing?.isOrderBump),
-      isUpsell: parsed.isUpsell || Boolean(existing?.isUpsell),
+      isOrderBump: orderKind === "bump",
+      isUpsell: orderKind === "upsell",
       parentOrderId: parsed.parentOrderId ?? existing?.parentOrderId ?? null,
       customerName: parsed.customerName ?? existing?.customerName ?? null,
       customerEmail: parsed.customerEmail ?? existing?.customerEmail ?? null,
@@ -240,7 +257,8 @@ async function applyCaktoEvent(
         store,
         workspaceId,
         {
-          eventName: "Purchase",
+          // Order bump é parte da mesma compra: vai como evento próprio para não inflar as compras do Meta.
+          eventName: order.orderKind === "bump" ? "OrderBump" : "Purchase",
           eventId: `cakto_${externalId}`,
           eventTime: new Date(order.paidAt ?? Date.now()),
           eventSourceUrl: session?.firstUrl ?? parsed.checkoutUrl,

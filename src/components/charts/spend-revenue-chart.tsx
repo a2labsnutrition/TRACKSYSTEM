@@ -28,8 +28,8 @@ export function SpendRevenueChart({ data, height = 280 }: { data: SpendPoint[]; 
   const rows = data.map((d) => ({
     date: d.date,
     Gasto: cum ? d.cumSpend : d.spend,
-    "Receita líquida": cum ? d.cumRevenue : d.revenue,
-    Lucro: cum ? d.cumProfit : d.profit,
+    Faturamento: cum ? d.cumRevenue : d.revenue,
+    "Contribuição (est.)": cum ? d.cumProfit : d.profit,
   }));
   return (
     <div>
@@ -62,8 +62,8 @@ export function SpendRevenueChart({ data, height = 280 }: { data: SpendPoint[]; 
             />
             <Legend wrapperStyle={{ fontSize: 12, color: "var(--muted)" }} />
             <Bar dataKey="Gasto" fill="var(--chart-spend)" radius={[3, 3, 0, 0]} maxBarSize={22} />
-            <Bar dataKey="Receita líquida" fill="var(--chart-revenue)" radius={[3, 3, 0, 0]} maxBarSize={22} />
-            <Line dataKey="Lucro" stroke="var(--chart-profit)" strokeWidth={2} dot={false} type="monotone" />
+            <Bar dataKey="Faturamento" fill="var(--chart-revenue)" radius={[3, 3, 0, 0]} maxBarSize={22} />
+            <Line dataKey="Contribuição (est.)" stroke="var(--chart-profit)" strokeWidth={2} dot={false} type="monotone" />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

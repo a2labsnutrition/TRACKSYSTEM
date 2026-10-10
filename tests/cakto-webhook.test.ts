@@ -125,7 +125,7 @@ describe("coleta do script (deduplicação)", () => {
   it("mesmo event_id não é gravado nem enviado à CAPI duas vezes", async () => {
     const store = makeStore();
     const { sender, calls } = fakeSender();
-    const payload = { site: "site_pub_1", event: "InitiateCheckout", event_id: "ic_1", sid: "sess_1", url: "https://x.com" };
+    const payload = { site: "site_pub_1", event: "InitiateCheckout", event_id: "ic_1", sid: "sess_1", url: "https://minhapagina.com/checkout" };
     const a = await processCollect(store, payload, { ip: null, userAgent: null }, { sender });
     await a.afterResponse?.();
     const b = await processCollect(store, payload, { ip: null, userAgent: null }, { sender });

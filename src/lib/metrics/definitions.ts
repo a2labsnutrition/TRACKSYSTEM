@@ -9,28 +9,38 @@ export interface MetricDef {
 export const METRICS: Record<string, MetricDef> = {
   spend: {
     label: "Gasto",
-    what: "Valor investido no Meta no período (fuso da conta de anúncios).",
-    whenBad: "Gasto sem venda acima de 2× o CPA alvo é sinal de corte. Veja o pacing para não estourar o orçamento.",
+    what: "Valor investido no Meta no período (fuso da conta de anúncios). Conta em outra moeda: convertido para R$ com cotação + IOF/spread e marcado como estimado.",
+    whenBad: "Gasto sem venda só vira sinal forte quando zero vendas seria improvável no CPA máximo (≈ 3× o CPA máximo sem venda). Veja o pacing para não estourar o orçamento.",
+  },
+  grossRevenue: {
+    label: "Faturamento bruto",
+    what: "Valor dos pedidos aprovados na Cakto no período (produto principal + order bumps + upsells), antes de taxas, impostos e reembolsos.",
+    whenBad: "Faturamento não é lucro: veja o lucro de contribuição.",
   },
   netRevenue: {
-    label: "Receita líquida",
-    what: "Soma do valor líquido das vendas pagas confirmadas pela Cakto (já sem taxas do gateway).",
+    label: "Receita após taxas",
+    what: "Faturamento após reembolsos menos as taxas da Cakto (estimadas quando o webhook não informa o líquido).",
     whenBad: "Se está baixa com muitos checkouts, olhe a taxa de aprovação por método de pagamento.",
   },
   profit: {
-    label: "Lucro",
-    what: "Receita líquida − impostos configurados − gasto em anúncios.",
-    whenBad: "Lucro negativo por 3+ dias com dados suficientes: otimize ou pause.",
+    label: "Lucro de contribuição (estimado)",
+    what: "Faturamento após reembolsos − taxas − impostos − custos variáveis do produto − anúncios. NÃO é lucro líquido: não inclui custos fixos (equipe, ferramentas, pró-labore).",
+    whenBad: "Negativo com dados suficientes (intervalo do CPA acima do equilíbrio): otimize ou reduza.",
+  },
+  grossMinusAds: {
+    label: "Faturamento − tráfego",
+    what: "Faturamento bruto menos o gasto com anúncios. Conta rápida — não desconta taxas, impostos, reembolsos nem custos.",
+    whenBad: "Nunca use como lucro.",
   },
   roasReal: {
-    label: "ROAS real",
-    what: "Receita líquida da Cakto ÷ gasto. Diferente do ROAS do Meta, que usa o valor que o Pixel informa.",
-    whenBad: "Abaixo do ROAS mínimo do produto = você perde dinheiro em cada venda.",
+    label: "ROAS bruto",
+    what: "Faturamento bruto aprovado (Cakto) ÷ gasto. Diferente do ROAS do Meta, que usa o valor que o Pixel informa e a janela de atribuição do Meta.",
+    whenBad: "Abaixo do ROAS de equilíbrio (bruto ÷ contribuição antes de anúncios) cada venda dá prejuízo.",
   },
   cpaReal: {
-    label: "CPA real",
-    what: "Gasto ÷ vendas pagas confirmadas na Cakto.",
-    whenBad: "Acima do CPA máximo: revise criativo (CTR/hook) e página (connect rate/conversão).",
+    label: "CPA",
+    what: "Gasto ÷ compras do PRODUTO PRINCIPAL pagas na Cakto. Order bumps e upsells não contam como compra.",
+    whenBad: "Acima do CPA de equilíbrio (contribuição por venda antes de anúncios) cada venda dá prejuízo. Com poucas vendas, olhe o intervalo de 95%.",
   },
   roasMeta: {
     label: "ROAS (Meta)",
@@ -44,8 +54,8 @@ export const METRICS: Record<string, MetricDef> = {
   },
   purchases: {
     label: "Compras",
-    what: "Vendas pagas confirmadas pela Cakto (real) ou atribuídas pelo Meta.",
-    whenBad: "Menos de 3 compras no período = pouco dado para decidir.",
+    what: "Compras do produto principal pagas na Cakto. O número do Meta (Pixel/CAPI, com a janela de atribuição dele) aparece separado e nunca é somado.",
+    whenBad: "Com poucas compras o CPA tem intervalo largo: o sistema diz quanto falta para concluir.",
   },
   cpm: {
     label: "CPM",

@@ -9,7 +9,7 @@ export async function adminRepository(db: SupabaseClient, workspaceId: string): 
   if (!w) return null;
   const { data: accounts } = await db
     .from("ad_accounts")
-    .select("id, meta_account_id, name, currency, timezone, account_status, last_synced_at")
+    .select("id, meta_account_id, name, currency, timezone, account_status, last_synced_at, fx_mode, fx_manual_rate, fx_spread_pct")
     .eq("workspace_id", workspaceId)
     .eq("is_active", true);
   const ctx: WorkspaceContext = {
@@ -32,6 +32,9 @@ export async function adminRepository(db: SupabaseClient, workspaceId: string): 
       timezone: a.timezone,
       status: a.account_status ?? "",
       lastSyncedAt: a.last_synced_at,
+      fxMode: a.fx_mode === "manual" ? ("manual" as const) : ("auto" as const),
+      fxManualRate: a.fx_manual_rate == null ? null : Number(a.fx_manual_rate),
+      fxSpreadPct: a.fx_spread_pct == null ? 0.035 : Number(a.fx_spread_pct),
     })),
   };
   return new SupabaseRepository(db, ctx);

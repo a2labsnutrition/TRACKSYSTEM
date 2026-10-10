@@ -1,3 +1,4 @@
+import { redactText } from "@/lib/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptSecret, sha256 } from "@/lib/crypto";
@@ -535,7 +536,7 @@ export async function runSyncCycle(
         .from("sync_jobs")
         .update({
           status: retry ? "queued" : "failed",
-          last_error: e instanceof MetaApiError ? e.friendly : err.message,
+          last_error: redactText(e instanceof MetaApiError ? e.friendly : err.message),
           next_run_at: new Date(Date.now() + wait).toISOString(),
         })
         .eq("id", job.id);

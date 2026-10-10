@@ -37,13 +37,15 @@ describe("regras — Fase 2", () => {
     expect(r.signals.map((s) => s.code)).toContain("saturacao_publico");
   });
 
-  it("fadiga vira atenção quando atinge metade dos anúncios (sem bloquear escala com CPA saudável)", () => {
+  it("fadiga vira atenção quando atinge metade dos anúncios (sem bloquear escala com lucro comprovado)", () => {
+    const cfgP = { ...cfg, breakevenCpa: 80, breakevenSource: "produto" as const };
     const base = {
       last1d: w({}),
-      last3d: w({ spend: 150, impressions: 8000, reachSum: 7000, linkClicks: 150, landingPageViews: 130 }, 4, 360),
-      last7d: w({ spend: 350, impressions: 20000, reachSum: 17000, linkClicks: 380, landingPageViews: 320 }, 9, 810),
+      last3d: w({ spend: 360, impressions: 20000, reachSum: 17000, linkClicks: 400, landingPageViews: 340 }, 12, 1080),
+      last7d: w({ spend: 900, impressions: 50000, reachSum: 40000, linkClicks: 1000, landingPageViews: 850 }, 30, 2700),
       trackingOk: true,
-      config: cfg,
+      config: cfgP,
+      attributionCoverage: 0.9,
     };
     const few = evaluate({ ...base, fatiguedAds: ["A"], activeAds: 5 });
     expect(few.signals.find((s) => s.code === "criativos_em_fadiga")?.severity).toBe("info");
@@ -51,6 +53,7 @@ describe("regras — Fase 2", () => {
     const many = evaluate({ ...base, fatiguedAds: ["A", "B", "C"], activeAds: 4 });
     expect(many.signals.find((s) => s.code === "criativos_em_fadiga")?.severity).toBe("atencao");
     expect(many.status).toBe("escalar");
+    expect(many.recommendations.map((r) => r.action)).toContain("variacoes_criativo");
   });
 
   it("aplica ajustes por produto e orçamento mínimo de teste", () => {

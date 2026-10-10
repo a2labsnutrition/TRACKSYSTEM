@@ -20,7 +20,7 @@ export function Stat({
 }: {
   label: string;
   metric?: string;
-  value: string;
+  value: React.ReactNode;
   current?: number | null;
   previous?: number | null;
   higherIsBetter?: boolean;

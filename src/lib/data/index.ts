@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { CasoRealRepository } from "./demo/caso-real";
 import { DemoRepository } from "./demo/repo";
 import type { Repository } from "./repository";
 import { SupabaseRepository } from "./supabase/repo";
@@ -11,6 +12,12 @@ import { DEFAULT_NOTIFY, type WorkspaceContext } from "./types";
 
 export const DEMO_COOKIE = "cc_demo";
 export const WS_COOKIE = "cc_ws";
+/** Cenário do modo demo: "caso-real" (dia 1, conta em US$, vendas sem origem) ou o demo completo. */
+export const SCENARIO_COOKIE = "cc_cenario";
+
+function demoRepo(scenario: string | undefined, email: string | null): Repository {
+  return scenario === "caso-real" ? new CasoRealRepository(email) : new DemoRepository(email);
+}
 
 /**
  * Resolve o repositório da requisição:
@@ -20,14 +27,15 @@ export const WS_COOKIE = "cc_ws";
  */
 export const getRepository = cache(async (): Promise<Repository> => {
   const jar = await cookies();
-  if (!isSupabaseConfigured()) return new DemoRepository(null);
+  const scenario = jar.get(SCENARIO_COOKIE)?.value;
+  if (!isSupabaseConfigured()) return demoRepo(scenario, null);
 
   const supabase = await createSupabaseServer();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (jar.get(DEMO_COOKIE)?.value === "1") return new DemoRepository(user.email ?? null);
+  if (jar.get(DEMO_COOKIE)?.value === "1") return demoRepo(scenario, user.email ?? null);
 
   const { data: memberships } = await supabase
     .from("workspace_members")
@@ -42,7 +50,7 @@ export const getRepository = cache(async (): Promise<Repository> => {
 
   const { data: accounts } = await supabase
     .from("ad_accounts")
-    .select("id, meta_account_id, name, currency, timezone, account_status, last_synced_at")
+    .select("id, meta_account_id, name, currency, timezone, account_status, last_synced_at, fx_mode, fx_manual_rate, fx_spread_pct")
     .eq("workspace_id", w.id)
     .eq("is_active", true);
 
@@ -66,6 +74,9 @@ export const getRepository = cache(async (): Promise<Repository> => {
       timezone: a.timezone,
       status: a.account_status ?? "",
       lastSyncedAt: a.last_synced_at,
+      fxMode: a.fx_mode === "manual" ? ("manual" as const) : ("auto" as const),
+      fxManualRate: a.fx_manual_rate == null ? null : Number(a.fx_manual_rate),
+      fxSpreadPct: a.fx_spread_pct == null ? 0.035 : Number(a.fx_spread_pct),
     })),
   };
   return new SupabaseRepository(supabase, ctx);

@@ -22,6 +22,7 @@ import type {
   WorkspaceContext,
 } from "@/lib/data/types";
 import { siteFromRow } from "@/lib/ingest/supabase-store";
+import { applyFx, convertAmount, fxTableFromRows, type FxTable } from "@/lib/money/fx";
 import { addDays, localDayStartUtc, todayIn } from "@/lib/tz";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -44,6 +45,7 @@ function insightFromRow(r: any): InsightDaily {
   return {
     level: r.level,
     entityId: r.entity_id,
+    adAccountId: r.ad_account_id,
     campaignId: r.campaign_id,
     adsetId: r.adset_id,
     date: String(r.date).slice(0, 10),
@@ -101,6 +103,11 @@ function orderFromDb(r: any): Order {
     attributionMethod: r.attribution_method,
     attributionConfidence: n(r.attribution_confidence),
     capiPurchaseSentAt: r.capi_purchase_sent_at,
+    orderKind: r.order_kind ?? undefined,
+    mainAmount: r.main_amount == null ? undefined : n(r.main_amount),
+    bumpAmount: r.bump_amount == null ? undefined : n(r.bump_amount),
+    upsellAmount: r.upsell_amount == null ? undefined : n(r.upsell_amount),
+    netEstimated: Boolean(r.net_estimated),
   };
 }
 
@@ -122,6 +129,7 @@ export class SupabaseRepository implements Repository {
     const rows = await fetchAll<any>((a, b) =>
       this.db.from("campaigns").select("*").eq("workspace_id", this.ws).order("name").range(a, b),
     );
+    const conv = await this.budgetConverter();
     return rows.map((r) => ({
       id: r.id,
       adAccountId: r.ad_account_id,
@@ -129,8 +137,8 @@ export class SupabaseRepository implements Repository {
       status: r.status,
       effectiveStatus: r.effective_status,
       objective: r.objective,
-      dailyBudget: r.daily_budget == null ? null : Number(r.daily_budget),
-      lifetimeBudget: r.lifetime_budget == null ? null : Number(r.lifetime_budget),
+      dailyBudget: conv(r.daily_budget == null ? null : Number(r.daily_budget), r.ad_account_id),
+      lifetimeBudget: conv(r.lifetime_budget == null ? null : Number(r.lifetime_budget), r.ad_account_id),
       budgetType: r.budget_type,
       bidStrategy: r.bid_strategy,
       createdTime: r.created_time,
@@ -144,6 +152,9 @@ export class SupabaseRepository implements Repository {
       if (campaignId) q = q.eq("campaign_id", campaignId);
       return q.order("name").range(a, b);
     });
+    const conv = await this.budgetConverter();
+    const { data: camps } = await this.db.from("campaigns").select("id, ad_account_id").eq("workspace_id", this.ws);
+    const accountOf = new Map((camps ?? []).map((c: any) => [c.id, c.ad_account_id]));
     return rows.map((r) => ({
       id: r.id,
       campaignId: r.campaign_id,
@@ -151,8 +162,8 @@ export class SupabaseRepository implements Repository {
       status: r.status,
       effectiveStatus: r.effective_status,
       optimizationGoal: r.optimization_goal,
-      dailyBudget: r.daily_budget == null ? null : Number(r.daily_budget),
-      lifetimeBudget: r.lifetime_budget == null ? null : Number(r.lifetime_budget),
+      dailyBudget: conv(r.daily_budget == null ? null : Number(r.daily_budget), accountOf.get(r.campaign_id)),
+      lifetimeBudget: conv(r.lifetime_budget == null ? null : Number(r.lifetime_budget), accountOf.get(r.campaign_id)),
       bidStrategy: r.bid_strategy,
       learningStage: r.learning_stage,
       createdTime: r.created_time,
@@ -211,7 +222,38 @@ export class SupabaseRepository implements Repository {
       if (q.campaignId) qq = qq.eq("campaign_id", q.campaignId);
       return qq.order("date").range(a, b);
     });
-    return rows.map(insightFromRow);
+    // Valores do Meta vêm na moeda da conta: converte para BRL (estimado quando há câmbio)
+    return applyFx(rows.map(insightFromRow), this.accountMap(), await this.fx(addDays(q.from, -10), q.to));
+  }
+
+  private accountMap() {
+    return new Map(this.ctx.adAccounts.map((a) => [a.id, a]));
+  }
+
+  private fxCache: FxTable = new Map();
+  private fxLoaded = new Set<string>();
+
+  /** Cotações das moedas das contas (não-BRL) no intervalo; em cache por instância. */
+  private async fx(from: string, to: string): Promise<FxTable> {
+    const currencies = [...new Set(this.ctx.adAccounts.map((a) => a.currency.toUpperCase()).filter((c) => c !== "BRL"))];
+    if (!currencies.length) return this.fxCache;
+    const key = `${from}|${to}`;
+    if (this.fxLoaded.has(key)) return this.fxCache;
+    const { data } = await this.db.from("fx_rates").select("date, base, rate").in("base", currencies).eq("quote", "BRL").gte("date", from).lte("date", to);
+    for (const [cur, byDate] of fxTableFromRows((data ?? []) as Array<{ date: string; base: string; rate: number }>)) {
+      if (!this.fxCache.has(cur)) this.fxCache.set(cur, new Map());
+      for (const [d, r] of byDate) this.fxCache.get(cur)!.set(d, r);
+    }
+    this.fxLoaded.add(key);
+    return this.fxCache;
+  }
+
+  /** Orçamentos também vêm na moeda da conta: converte com a cotação de hoje. */
+  private async budgetConverter(): Promise<(v: number | null, accountId: string | null | undefined) => number | null> {
+    const today = todayIn(this.ctx.workspace.timezone);
+    const table = await this.fx(addDays(today, -10), today);
+    const accounts = this.accountMap();
+    return (v, accountId) => convertAmount(v, accountId ? accounts.get(accountId) : undefined, table, today);
   }
 
   async orders(q: { from: string; to: string }): Promise<Order[]> {
@@ -239,6 +281,9 @@ export class SupabaseRepository implements Repository {
     const rulesBy = new Map((rules ?? []).map((r: any) => [r.product_id, r.config]));
     return (data ?? []).map((r: any) => ({
       rules: rulesBy.get(r.id) ?? undefined,
+      kind: r.kind ?? "principal",
+      costPerSale: n(r.cost_per_sale),
+      costPct: n(r.cost_pct),
       id: r.id,
       name: r.name,
       price: n(r.price),

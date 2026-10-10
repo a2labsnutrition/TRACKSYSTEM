@@ -210,17 +210,24 @@ export interface Divergence {
   explanation: string;
 }
 
-export function computeDivergence(metaPurchases: number, realAttributedPurchases: number, pendingPix: number): Divergence {
+export function computeDivergence(metaPurchases: number, realAttributedPurchases: number, pendingPix: number, unattributed = 0): Divergence {
   const diff = metaPurchases - realAttributedPurchases;
   const ratio = safeDiv(diff, realAttributedPurchases);
+  const d = baseDivergence(metaPurchases, realAttributedPurchases, pendingPix, diff, ratio);
+  if (unattributed > 0)
+    d.explanation += ` A Cakto tem ${unattributed} compra(s) sem origem identificada: podem ter vindo do Meta, mas não são somadas a nenhuma campanha.`;
+  return d;
+}
+
+function baseDivergence(metaPurchases: number, realAttributedPurchases: number, pendingPix: number, diff: number, ratio: number | null): Divergence {
   let explanation = "Números alinhados.";
   if (realAttributedPurchases === 0 && metaPurchases === 0) explanation = "Sem compras no período.";
   else if (ratio != null && Math.abs(ratio) <= 0.15) explanation = "Números alinhados (diferença até 15% é normal).";
   else if (diff > 0)
     explanation =
       pendingPix > 0
-        ? `Meta conta mais compras que a Cakto confirmou. Provável: ${pendingPix} Pix gerados e não pagos contados como compra pelo Pixel, ou janela de atribuição do Meta (7 dias clique/1 dia visualização) pegando vendas de outras origens.`
-        : "Meta conta mais compras que a Cakto confirmou. Provável: janela de atribuição do Meta (inclui visualização), evento Purchase disparado em duplicidade ou vendas atribuídas a outra origem.";
+        ? `Meta conta mais compras do que a Cakto atribuiu a anúncios. Provável: ${pendingPix} Pix gerados e não pagos contados como compra pelo Pixel, ou janela de atribuição do Meta (7 dias clique/1 dia visualização) pegando vendas de outras origens.`
+        : "Meta conta mais compras do que a Cakto atribuiu a anúncios. Provável: janela de atribuição do Meta (inclui visualização), evento Purchase disparado em duplicidade ou vendas atribuídas a outra origem.";
   else
     explanation =
       "A Cakto confirmou mais vendas atribuídas a anúncios do que o Meta registrou. Provável: bloqueio de cookies/navegador, Pixel não disparando na confirmação ou CAPI ainda não ativa.";

@@ -98,6 +98,11 @@ export class DemoRepository implements Repository {
       attributionMethod: o.attributionMethod,
       attributionConfidence: o.attributionConfidence,
       capiPurchaseSentAt: o.capiPurchaseSentAt,
+      orderKind: o.orderKind,
+      mainAmount: o.mainAmount,
+      bumpAmount: o.bumpAmount,
+      upsellAmount: o.upsellAmount,
+      netEstimated: o.netEstimated,
     }));
     return [...mem, ...data().orders].filter((o) => {
       const d = dateIn(new Date(o.createdAt), TZ);

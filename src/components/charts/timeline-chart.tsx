@@ -30,8 +30,8 @@ const MARKER_COLOR: Record<Marker["kind"], string> = {
 
 const METRICS = {
   spend: { label: "Gasto", color: "var(--chart-spend)", fmt: (v: number) => fmtBRL(v) },
-  cpa: { label: "CPA real", color: "var(--warn)", fmt: (v: number) => fmtBRL(v) },
-  roas: { label: "ROAS real", color: "var(--good)", fmt: (v: number) => fmtRoas(v) },
+  cpa: { label: "CPA", color: "var(--warn)", fmt: (v: number) => fmtBRL(v) },
+  roas: { label: "ROAS bruto", color: "var(--good)", fmt: (v: number) => fmtRoas(v) },
   ctr: { label: "CTR link", color: "var(--info)", fmt: (v: number) => fmtPct(v, 2) },
   cpm: { label: "CPM", color: "var(--violet)", fmt: (v: number) => fmtBRL(v) },
   frequency: { label: "Frequência", color: "var(--bad)", fmt: (v: number) => fmtDec(v, 2) },

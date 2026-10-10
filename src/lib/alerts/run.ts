@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { campaignRows } from "@/lib/analytics";
+import { anomalyChecks, campaignRows } from "@/lib/analytics";
 import type { Repository } from "@/lib/data/repository";
 import { adminRepository } from "@/lib/data/supabase/context";
 import { env } from "@/lib/env";
@@ -13,7 +13,7 @@ export async function alertInput(repo: Repository): Promise<AlertInput> {
   const ctx = await repo.context();
   const period = resolvePeriod(ctx.workspace.timezone, "7d");
   const health = await repo.health();
-  const [rows, ads] = await Promise.all([campaignRows(repo, period, health), repo.ads()]);
+  const [rows, ads, anomalies] = await Promise.all([campaignRows(repo, period, health), repo.ads(), anomalyChecks(repo, health)]);
   const tz = ctx.adAccounts[0]?.timezone ?? ctx.workspace.timezone;
   const now = new Date();
   return {
@@ -30,6 +30,7 @@ export async function alertInput(repo: Repository): Promise<AlertInput> {
     accounts: ctx.adAccounts.map((a) => ({ id: a.id, name: a.name, status: a.status })),
     health,
     dayElapsed: (hourIn(now, tz) * 60 + now.getUTCMinutes()) / 1440,
+    anomalies,
   };
 }
 

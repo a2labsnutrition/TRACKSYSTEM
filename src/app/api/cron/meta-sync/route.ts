@@ -3,6 +3,8 @@ import { safeEqual } from "@/lib/crypto";
 import { runAlertsForWorkspace } from "@/lib/alerts/run";
 import { retryFailedCapi } from "@/lib/ingest/capi-retry";
 import { runSyncCycle } from "@/lib/integrations/meta/sync";
+import { log } from "@/lib/log";
+import { syncFxRates } from "@/lib/money/fx-sync";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const maxDuration = 60;
@@ -11,7 +13,8 @@ export const maxDuration = 60;
  * Chamado pelo Vercel Cron (Authorization: Bearer CRON_SECRET).
  *  ?mode=hourly  estrutura + ontem/hoje (de hora em hora)
  *  ?mode=daily   reprocessa os últimos 7 dias (o Meta ajusta números retroativamente)
- * Em ambos: reenvia eventos da CAPI que falharam e recalcula os alertas (com notificação).
+ * Em ambos: atualiza a PTAX das contas em moeda estrangeira, reenvia eventos da CAPI
+ * que falharam e recalcula os alertas (com notificação).
  */
 export async function GET(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
@@ -21,8 +24,10 @@ export async function GET(req: Request) {
   if (!isServiceRoleConfigured()) return Response.json({ ok: false, error: "Supabase não configurado" }, { status: 500 });
   const mode = new URL(req.url).searchParams.get("mode") === "daily" ? "daily" : "hourly";
   try {
-    const capi = await retryFailedCapi(supabaseAdmin());
     const db = supabaseAdmin();
+    // Câmbio antes do sync: falha aqui não interrompe nada (vale a taxa manual ou "sem cotação")
+    const fx = await syncFxRates(db).catch((e: Error) => ({ ok: false, error: e.message }));
+    const capi = await retryFailedCapi(db);
     const r = await runSyncCycle(db, mode, { timeBudgetMs: 40_000 });
     // Alertas depois do sync (dados frescos). Falha num workspace não derruba os outros.
     const { data: wss } = await db.from("ad_accounts").select("workspace_id").eq("is_active", true);
@@ -35,8 +40,10 @@ export async function GET(req: Request) {
         alerts[ws] = { erro: (e as Error).message };
       }
     }
-    return Response.json({ ok: r.errors.length === 0, mode, capi, alerts, ...r, logs: r.logs.filter((l) => !l.ok) });
+    log.info("cron.meta_sync", { mode, errors: r.errors.length, fxOk: fx.ok });
+    return Response.json({ ok: r.errors.length === 0, mode, fx, capi, alerts, ...r, logs: r.logs.filter((l) => !l.ok) });
   } catch (e) {
+    log.error("cron.meta_sync_failed", { mode, error: e });
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
 }

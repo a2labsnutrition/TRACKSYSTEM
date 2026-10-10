@@ -40,8 +40,29 @@ export default async function PainelLayout({ children }: { children: React.React
 
         {ctx.mode === "demo" ? (
           <div className="border-b border-warn/20 bg-warn/5 px-4 py-2 text-xs text-warn lg:px-6">
-            Modo demonstração: todos os números abaixo são fictícios, só para você ver o sistema funcionando.
-            {isSupabaseConfigured() ? " Use “Sair do demo” para ver seus dados reais." : " Configure o Supabase (.env) para conectar suas contas reais."}
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+              <span className="min-w-0 sm:flex-1">
+                Modo demonstração: todos os números abaixo são fictícios, só para você ver o sistema funcionando.
+                {isSupabaseConfigured() ? " Use “Sair do demo” para ver seus dados reais." : " Configure o Supabase (.env) para conectar suas contas reais."}
+              </span>
+              <form action="/api/demo" method="post" className="flex flex-wrap items-center gap-1.5">
+                <span className="text-faint">Cenário:</span>
+                <button
+                  name="cenario"
+                  value="completo"
+                  className={ctx.workspace.id === "caso-real" ? "rounded border border-warn/30 px-2 py-0.5 hover:bg-warn/10" : "rounded bg-warn/20 px-2 py-0.5 font-semibold"}
+                >
+                  Demo completo
+                </button>
+                <button
+                  name="cenario"
+                  value="caso-real"
+                  className={ctx.workspace.id === "caso-real" ? "rounded bg-warn/20 px-2 py-0.5 font-semibold" : "rounded border border-warn/30 px-2 py-0.5 hover:bg-warn/10"}
+                >
+                  Caso real (dia 1, US$)
+                </button>
+              </form>
+            </div>
           </div>
         ) : null}
         {tzMismatch.length ? (

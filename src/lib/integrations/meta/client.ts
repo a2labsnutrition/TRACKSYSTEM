@@ -1,3 +1,4 @@
+import { redactText } from "@/lib/log";
 import { env } from "@/lib/env";
 
 /**
@@ -18,7 +19,8 @@ export class MetaApiError extends Error {
     public fbtraceId: string | null,
     public raw: unknown,
   ) {
-    super(message);
+    // Nunca carregar token em mensagem de erro (vai para o banco e para a interface)
+    super(redactText(message));
     this.name = "MetaApiError";
   }
 

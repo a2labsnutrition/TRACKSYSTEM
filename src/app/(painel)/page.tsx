@@ -14,6 +14,11 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Stat } from "@/components/ui/stat";
 import { StatusDot } from "@/components/ui/status-dot";
 import { LinkButton } from "@/components/ui/button";
+import { AnomaliesList } from "@/components/intel/anomalies-list";
+import { AttributionSplitView } from "@/components/intel/attribution-split";
+import { FinancialBreakdown } from "@/components/intel/financial-breakdown";
+import { FreshnessList } from "@/components/intel/freshness";
+import { RecommendationCard } from "@/components/intel/recommendation-card";
 
 export default async function VisaoGeral({ searchParams }: { searchParams: SearchParams }) {
   const repo = await getRepository();
@@ -71,30 +76,92 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Gasto" metric="spend" value={fmtBRL(cur.meta.spend)} current={cur.meta.spend} previous={prev.meta.spend} neutral />
-        <Stat label="Receita líquida" metric="netRevenue" value={fmtBRL(cur.real.netRevenue)} current={cur.real.netRevenue} previous={prev.real.netRevenue} />
         <Stat
-          label="Lucro"
-          metric="profit"
-          value={fmtBRL(cur.profit.profit)}
-          current={cur.profit.profit}
-          previous={prev.profit.profit}
-          className={cur.profit.profit < 0 ? "border-bad/40" : cur.profit.profit > 0 ? "border-good/30" : ""}
+          label="Gasto"
+          metric="spend"
+          value={fmtBRL(cur.meta.spend)}
+          current={cur.meta.spend}
+          previous={prev.meta.spend}
+          neutral
+          sub={cur.fx.missing ? "parte sem cotação!" : cur.fx.estimated ? "câmbio estimado" : undefined}
+          className={cur.fx.missing ? "border-bad/40" : undefined}
         />
-        <Stat label="ROAS real" metric="roasReal" value={fmtRoas(cur.profit.roasReal)} current={cur.profit.roasReal} previous={prev.profit.roasReal} sub={`Meta: ${fmtRoas(cur.derived.roasMeta)}`} />
-        <Stat label="CPA real" metric="cpaReal" value={fmtBRL(cur.profit.cpaReal)} current={cur.profit.cpaReal} previous={prev.profit.cpaReal} higherIsBetter={false} sub={`Meta: ${fmtBRL(cur.derived.cpaMeta)}`} />
-        <Stat label="Vendas pagas" metric="purchases" value={fmtInt(cur.real.paidOrders)} current={cur.real.paidOrders} previous={prev.real.paidOrders} sub={`Meta: ${fmtInt(cur.meta.purchases)}`} />
+        <Stat
+          label="Faturamento bruto"
+          metric="grossRevenue"
+          value={fmtBRL(cur.fin.grossApproved)}
+          current={cur.fin.grossApproved}
+          previous={prev.fin.grossApproved}
+          sub={cur.fin.bumpRevenue || cur.fin.upsellRevenue ? `bumps/upsells ${fmtBRL(cur.fin.bumpRevenue + cur.fin.upsellRevenue)}` : `− tráfego: ${fmtBRL(cur.fin.grossMinusAds)}`}
+        />
+        <Stat
+          label="Lucro de contribuição"
+          metric="profit"
+          value={fmtBRL(cur.fin.contribution)}
+          current={cur.fin.contribution}
+          previous={prev.fin.contribution}
+          sub="estimado · sem custos fixos"
+          className={cur.fin.contribution < 0 ? "border-bad/40" : cur.fin.contribution > 0 ? "border-good/30" : ""}
+        />
+        <Stat label="ROAS bruto" metric="roasReal" value={fmtRoas(cur.fin.roasGross)} current={cur.fin.roasGross} previous={prev.fin.roasGross} sub={`Meta: ${fmtRoas(cur.derived.roasMeta)}`} />
+        <Stat label="CPA" metric="cpaReal" value={fmtBRL(cur.fin.cpa)} current={cur.fin.cpa} previous={prev.fin.cpa} higherIsBetter={false} sub={`Meta: ${fmtBRL(cur.derived.cpaMeta)}`} />
+        <Stat label="Compras (principal)" metric="purchases" value={fmtInt(cur.fin.mainPurchases)} current={cur.fin.mainPurchases} previous={prev.fin.mainPurchases} sub={`Meta: ${fmtInt(cur.meta.purchases)}`} />
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader
-            title="Gasto × receita × lucro por dia"
-            description="Gasto no fuso da conta de anúncios; receita pela data de pagamento na Cakto."
+            title="Gasto × faturamento × contribuição por dia"
+            description="Gasto no fuso da conta de anúncios; faturamento pela data de pagamento na Cakto; contribuição estimada."
             action={<LinkButton href={withPeriod("/gasto-diario", period)} variant="ghost" size="sm">Detalhar <ArrowRight className="h-3.5 w-3.5" /></LinkButton>}
           />
           <CardBody>
             <SpendRevenueChart data={o.daily} />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Resultado financeiro" description="Cada parcela separada — nenhuma delas é lucro líquido" />
+          <CardBody>
+            <FinancialBreakdown fin={cur.fin} spendEstimated={cur.fx.estimated} />
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader
+            title="Recomendações priorizadas"
+            description="Consultivas: você decide e executa. Cada uma traz dados, confiança, riscos, impacto e quando reavaliar."
+          />
+          <CardBody className="space-y-2">
+            {o.recommendations.length ? (
+              o.recommendations.slice(0, 5).map((r, i) => (
+                <RecommendationCard key={`${r.campaignId}-${r.action}-${i}`} rec={r} campaignName={r.campaignName} href={withPeriod(`/campanhas/${r.campaignId}`, period)} compact />
+              ))
+            ) : (
+              <p className="text-sm text-muted">Nenhuma campanha ativa para recomendar.</p>
+            )}
+            {o.recommendations.length > 5 ? <p className="text-xs text-faint">+{o.recommendations.length - 5} recomendação(ões) nas páginas das campanhas.</p> : null}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Qualidade dos dados" description="Origem das vendas e atualização das fontes" />
+          <CardBody className="space-y-4">
+            <AttributionSplitView split={cur.attribution} metaPurchases={cur.meta.purchases} />
+            <div className="border-t border-border pt-3">
+              <FreshnessList items={o.freshness} fx={cur.fx} />
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader title="Anomalias" description="Só aparece como anomalia o que é improvável como variação normal (teste indicado em cada item)." />
+          <CardBody>
+            <AnomaliesList checks={o.anomalies} withPeriod={(h) => withPeriod(h, period)} />
           </CardBody>
         </Card>
 
@@ -128,7 +195,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
                 Divergência Meta × Cakto <InfoTip metric="divergence" />
               </p>
               <p className="text-xs">
-                Meta: <b className="tabular">{fmtInt(o.divergence.metaPurchases)}</b> · Cakto (atribuídas): <b className="tabular">{fmtInt(o.divergence.realPurchases)}</b>
+                Meta: <b className="tabular">{fmtInt(o.divergence.metaPurchases)}</b> · Cakto (compras principais atribuídas a anúncios): <b className="tabular">{fmtInt(o.divergence.realPurchases)}</b> · sem origem: <b className="tabular">{fmtInt(cur.attribution.desconhecida)}</b>
                 {o.divergence.ratio != null ? <span className="text-faint"> ({fmtPct(o.divergence.ratio, 0)})</span> : null}
               </p>
               <p className="mt-1 text-xs text-muted">{o.divergence.explanation}</p>
@@ -141,7 +208,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
         <Card className="xl:col-span-2">
           <CardHeader
             title="O que fazer agora"
-            description="Veredito das regras para cada campanha com gasto no período"
+            description="Veredito do motor para cada campanha com gasto no período"
             action={<LinkButton href={withPeriod("/campanhas", period)} variant="ghost" size="sm">Todas <ArrowRight className="h-3.5 w-3.5" /></LinkButton>}
           />
           <div className="divide-y divide-border">
@@ -155,7 +222,9 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
                   </span>
                   <span className="hidden text-right text-xs tabular sm:block">
                     <span className="block">{fmtBRL(r.periodSpend)}</span>
-                    <span className="block text-faint">CPA {fmtBRL(r.period.profit.cpaReal)}</span>
+                    <span className="block text-faint">
+                      CPA {fmtBRL(r.period.fin.cpa)} · confiança {r.decision.confidence}
+                    </span>
                   </span>
                 </Link>
               ))

@@ -1,6 +1,6 @@
-import { ATTRIBUTION_LABEL } from "@/lib/attribution/attribute";
+import { ATTRIBUTION_LABEL, attributionLevel, LEVEL_LABEL } from "@/lib/attribution/attribute";
 import { getRepository } from "@/lib/data";
-import type { Order, OrderStatus } from "@/lib/data/types";
+import { orderParts, type Order, type OrderStatus } from "@/lib/data/types";
 import { fmtBRL, fmtDate, fmtDateTime, fmtInt, fmtPct } from "@/lib/format";
 import { aggregateOrders } from "@/lib/metrics/compute";
 import { periodFrom, sp, type SearchParams } from "@/lib/page";
@@ -44,7 +44,10 @@ export default async function Vendas({ searchParams }: { searchParams: SearchPar
   );
   const real = aggregateOrders(orders);
   const paid = orders.filter((o) => o.status === "paid");
-  const attributed = paid.filter((o) => o.attributionMethod !== "unattributed");
+  const mainPaid = paid.filter((o) => orderParts(o).kind === "main");
+  const levels = { confirmada: 0, provavel: 0, desconhecida: 0 };
+  for (const o of mainPaid) levels[attributionLevel(o.attributionMethod)]++;
+  const bumpRevenue = paid.reduce((s, o) => s + orderParts(o).bump + orderParts(o).upsell, 0);
   const byMethod = paid.reduce<Record<string, number>>((acc, o) => ((acc[o.attributionMethod] = (acc[o.attributionMethod] ?? 0) + 1), acc), {});
 
   return (
@@ -55,9 +58,13 @@ export default async function Vendas({ searchParams }: { searchParams: SearchPar
         actions={<PeriodPicker current={period.key} from={period.from} to={period.to} />}
       />
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Box label="Vendas pagas" value={fmtInt(real.paidOrders)} sub={`${fmtInt(real.generatedOrders)} geradas`} />
-        <Box label="Receita líquida" value={fmtBRL(real.netRevenue)} sub={`bruto ${fmtBRL(real.grossRevenue)}`} />
-        <Box label="Atribuídas a anúncio" value={fmtPct(paid.length ? attributed.length / paid.length : null, 0)} sub={`${attributed.length} de ${paid.length}`} />
+        <Box label="Compras principais pagas" value={fmtInt(mainPaid.length)} sub={`${fmtInt(real.paidOrders)} pedido(s) pagos · ${fmtInt(real.generatedOrders)} gerados`} />
+        <Box label="Faturamento bruto (pagos)" value={fmtBRL(real.grossRevenue)} sub={`bumps/upsells ${fmtBRL(bumpRevenue)} · após taxas ${fmtBRL(real.netRevenue)}`} />
+        <Box
+          label="Origem identificada"
+          value={fmtPct(mainPaid.length ? (levels.confirmada + levels.provavel) / mainPaid.length : null, 0)}
+          sub={`${levels.confirmada} confirmada(s) · ${levels.provavel} provável(is) · ${levels.desconhecida} sem origem`}
+        />
         <Box label="Reembolsos/chargebacks" value={fmtInt(real.refunds)} sub={fmtBRL(real.refundedAmount)} />
       </div>
 
@@ -134,20 +141,28 @@ function OrderRow({ o, campaignName, tz }: { o: Order; campaignName: string | nu
       <Td className="text-xs">{fmtDateTime(o.createdAt, tz)}</Td>
       <Td className="max-w-48 truncate text-xs">
         <span className="block truncate font-medium">{o.externalId}</span>
-        <span className="text-faint">{o.productName ?? "—"}{o.isOrderBump ? " · orderbump" : ""}{o.isUpsell ? " · upsell" : ""}</span>
+        <span className="text-faint">
+          {o.productName ?? "—"}
+          {orderParts(o).kind === "bump" ? " · order bump" : orderParts(o).kind === "upsell" ? " · upsell" : ""}
+          {orderParts(o).kind === "main" && orderParts(o).bump > 0 ? ` · inclui bump ${fmtBRL(orderParts(o).bump)}` : ""}
+        </span>
       </Td>
       <Td>
         <Badge tone={st.tone}>{st.label}</Badge>
       </Td>
       <Td className="text-xs">{METHOD[o.paymentMethod] ?? o.paymentMethod}</Td>
       <Td className="text-right">{fmtBRL(o.grossAmount)}</Td>
-      <Td className="text-right">{fmtBRL(o.netAmount)}</Td>
+      <Td className="text-right">
+        {fmtBRL(o.netAmount)}
+        {o.netEstimated ? <span className="block text-[11px] text-faint">estimado</span> : null}
+      </Td>
       <Td className="text-xs">
         {o.attributionMethod === "unattributed" ? (
-          <Badge tone="warn">Não atribuída</Badge>
+          <Badge tone="warn">Desconhecida</Badge>
         ) : (
           <span>
-            {ATTRIBUTION_LABEL[o.attributionMethod]} <span className="text-faint">({fmtPct(o.attributionConfidence, 0)})</span>
+            <Badge tone={attributionLevel(o.attributionMethod) === "confirmada" ? "good" : "info"}>{LEVEL_LABEL[attributionLevel(o.attributionMethod)]}</Badge>{" "}
+            <span className="text-faint">{ATTRIBUTION_LABEL[o.attributionMethod]}</span>
           </span>
         )}
       </Td>

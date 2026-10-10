@@ -1,5 +1,6 @@
 import type { SessionRef } from "@/lib/attribution/attribute";
-import type { AttributionMethod, OrderStatus, PaymentMethod, TrackingSite } from "@/lib/data/types";
+import type { AttributionMethod, OrderKind, OrderStatus, PaymentMethod, ProductKind, TrackingSite } from "@/lib/data/types";
+import type { ParsedItem } from "@/lib/integrations/cakto/parser";
 
 /**
  * Interface de persistência usada pela ingestão (script de tracking, webhook
@@ -83,6 +84,11 @@ export interface OrderRecord {
   createdAt: string;
   paidAt: string | null;
   refundedAt: string | null;
+  orderKind: OrderKind;
+  mainAmount: number;
+  bumpAmount: number;
+  upsellAmount: number;
+  items: ParsedItem[] | null;
 }
 
 export interface CapiConfig {
@@ -146,7 +152,8 @@ export interface IngestStore {
   markRawProcessed(id: string, error: string | null): Promise<void>;
   getOrder(workspaceId: string, externalId: string): Promise<OrderRecord | null>;
   upsertOrder(workspaceId: string, o: OrderRecord): Promise<void>;
-  productIdForCakto(workspaceId: string, caktoProductId: string | null): Promise<string | null>;
+  /** Produto cadastrado que contém este ID da Cakto (e o papel dele: principal/bump/upsell). */
+  productForCakto(workspaceId: string, caktoProductId: string | null): Promise<{ id: string; kind: ProductKind } | null>;
   workspaceSettings(workspaceId: string): Promise<WorkspaceSettings>;
 
   // ---- CAPI ----

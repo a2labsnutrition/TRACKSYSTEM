@@ -1,4 +1,5 @@
 import "server-only";
+import { log } from "@/lib/log";
 import { lookup } from "node:dns/promises";
 import { existsSync } from "node:fs";
 import { isIP } from "node:net";
@@ -267,7 +268,7 @@ export async function verifyInstallation(rawUrl: string, siteKey: string, expect
       return analyze(url, await browserSnapshot(url, exe), siteKey, expectedPixel, "browser");
     } catch (e) {
       // cai para o modo estático
-      console.warn("[verify] navegador falhou:", (e as Error).message);
+      log.warn("verify.browser_failed", { error: e });
     }
   }
   const t0 = Date.now();

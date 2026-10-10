@@ -8,12 +8,13 @@ import { z } from "zod";
  */
 
 export const VERDICTS = ["escalar", "manter", "otimizar", "pausar", "aguardar"] as const;
+export const CONFIDENCE_LEVELS = ["baixa", "moderada", "alta"] as const;
 export const BOTTLENECKS = ["criativo", "pagina", "checkout_pagamento", "publico_saturacao", "oferta_preco", "tracking", "nenhum"] as const;
 
 export const ParecerSchema = z.object({
   veredito: z.object({
     status: z.enum(VERDICTS),
-    confianca: z.enum(["baixa", "media", "alta"]),
+    confianca: z.enum(CONFIDENCE_LEVELS).describe("Quanto os dados sustentam o veredito (não é a chance de dar certo)"),
     justificativa: z.string().describe("1-2 frases citando os números que sustentam o veredito"),
     concorda_com_regras: z.boolean().describe("true se o veredito é o mesmo do motor de regras"),
   }),
@@ -62,9 +63,24 @@ export const ParecerSchema = z.object({
     )
     .describe("Criativos a produzir em seguida (repetir o que funciona, abandonar o que não)"),
   alerta_tracking: z.string().nullable().describe("Preencha se o tracking não for confiável; senão null"),
+  o_que_nao_sabemos: z
+    .array(z.string())
+    .describe("Dados ausentes, estimados ou incertos que limitam este parecer (ex.: vendas sem origem, câmbio estimado, poucos dias)"),
+  o_que_mudaria_a_decisao: z.array(z.string()).describe("Condições observáveis que invalidariam o veredito"),
 });
 
 export type ParecerContent = z.infer<typeof ParecerSchema>;
+
+/** Pareceres salvos antes da revisão usavam "media" e não tinham os campos novos. */
+export function normalizeParecer(c: ParecerContent): ParecerContent {
+  const conf = (c.veredito?.confianca as string) === "media" ? "moderada" : c.veredito?.confianca;
+  return {
+    ...c,
+    veredito: { ...c.veredito, confianca: conf },
+    o_que_nao_sabemos: c.o_que_nao_sabemos ?? [],
+    o_que_mudaria_a_decisao: c.o_que_mudaria_a_decisao ?? [],
+  };
+}
 
 export const BOTTLENECK_LABEL: Record<(typeof BOTTLENECKS)[number], string> = {
   criativo: "Criativo (gancho, retenção, CTR)",

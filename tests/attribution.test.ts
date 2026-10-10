@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attributeOrder, extractMetaId, fbclidFromFbc, type AttributionLookup, type SessionRef } from "@/lib/attribution/attribute";
+import { attributeOrder, attributionLevel, extractMetaId, fbclidFromFbc, type AttributionLookup, type SessionRef } from "@/lib/attribution/attribute";
 
 const S = (id: string, p: Partial<SessionRef> = {}): SessionRef => ({
   sessionId: id, visitorId: "v", utmSource: "facebook", utmCampaign: "Camp|120001", utmContent: "Ad|120003",
@@ -56,12 +56,22 @@ describe("atribuição", () => {
     expect(r.confidence).toBe(0.7);
   });
 
-  it("5) janela de tempo com confiança menor quando há vários cliques", async () => {
+  it("5) janela de tempo: só atribui com um único candidato; ambíguo fica sem origem", async () => {
     const one = await attributeOrder(order, lookup([], [S("a")]));
     expect(one.method).toBe("time_window");
     expect(one.confidence).toBe(0.4);
     const many = await attributeOrder(order, lookup([], [S("a"), S("b")]));
-    expect(many.confidence).toBe(0.25);
+    expect(many.method).toBe("unattributed");
+    expect(many.ambiguous).toBe(2);
+    expect(many.adId).toBeNull();
+  });
+
+  it("níveis de atribuição", () => {
+    expect(attributionLevel("checkout_param")).toBe("confirmada");
+    expect(attributionLevel("utm_ids")).toBe("confirmada");
+    expect(attributionLevel("email_hash")).toBe("provavel");
+    expect(attributionLevel("time_window")).toBe("provavel");
+    expect(attributionLevel("unattributed")).toBe("desconhecida");
   });
 
   it("sem origem => não atribuída (nunca descarta)", async () => {

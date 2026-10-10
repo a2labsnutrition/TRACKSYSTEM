@@ -33,7 +33,14 @@ export interface AdAccount {
   timezone: string;
   status: string;
   lastSyncedAt: string | null;
+  /** Conversão de moeda quando a conta não está em BRL. */
+  fxMode?: "auto" | "manual";
+  fxManualRate?: number | null;
+  /** IOF + spread do cartão sobre a cobrança internacional (0.035 = 3,5%). */
+  fxSpreadPct?: number;
 }
+
+export type ProductKind = "principal" | "order_bump" | "upsell";
 
 export interface Product {
   id: string;
@@ -46,6 +53,12 @@ export interface Product {
   caktoProductIds: string[];
   /** Ajustes das regras de decisão para este produto (kill, frequência, volume mínimo...). */
   rules?: Partial<DecisionConfig>;
+  /** Papel do produto no funil (pedidos de order bump/upsell não contam como compra principal). */
+  kind?: ProductKind;
+  /** Custo variável fixo por venda (R$) — ex.: entrega, ferramenta por aluno. */
+  costPerSale?: number;
+  /** Custo variável proporcional ao faturamento (0.1 = 10%) — ex.: coprodução, afiliados. */
+  costPct?: number;
 }
 
 export interface Campaign {
@@ -105,6 +118,16 @@ export interface Ad {
 export interface InsightDaily {
   level: Level;
   entityId: string;
+  /** Conta de anúncios (uuid interno) — usada para converter moeda. */
+  adAccountId?: string;
+  /** Moeda original da conta e valor antes da conversão (quando houve conversão). */
+  currency?: string;
+  spendOriginal?: number;
+  /** Taxa usada (moeda da conta -> BRL, já com IOF/spread) e se é estimativa. */
+  fxRate?: number | null;
+  fxEstimated?: boolean;
+  /** Sem cotação para converter: valor ficou na moeda original (não somar com BRL!). */
+  fxMissing?: boolean;
   campaignId: string | null;
   adsetId: string | null;
   date: string; // YYYY-MM-DD no fuso da conta
@@ -181,7 +204,31 @@ export interface Order {
   attributionMethod: AttributionMethod;
   attributionConfidence: number;
   capiPurchaseSentAt: string | null;
+  /** Composição (opcional em dados antigos; ver orderParts()). */
+  orderKind?: OrderKind;
+  mainAmount?: number;
+  bumpAmount?: number;
+  upsellAmount?: number;
+  /** Valor líquido estimado com a taxa padrão (a Cakto não informou). */
+  netEstimated?: boolean;
 }
+
+export type OrderKind = "main" | "bump" | "upsell";
+
+/** Composição do pedido com padrões para dados antigos. */
+export function orderParts(o: Pick<Order, "grossAmount" | "isOrderBump" | "isUpsell" | "orderKind" | "mainAmount" | "bumpAmount" | "upsellAmount">) {
+  const kind: OrderKind = o.orderKind ?? (o.isOrderBump ? "bump" : o.isUpsell ? "upsell" : "main");
+  const hasSplit = (o.mainAmount ?? 0) + (o.bumpAmount ?? 0) + (o.upsellAmount ?? 0) > 0;
+  if (hasSplit) return { kind, main: o.mainAmount ?? 0, bump: o.bumpAmount ?? 0, upsell: o.upsellAmount ?? 0 };
+  return {
+    kind,
+    main: kind === "main" ? o.grossAmount : 0,
+    bump: kind === "bump" ? o.grossAmount : 0,
+    upsell: kind === "upsell" ? o.grossAmount : 0,
+  };
+}
+
+export type AttributionLevel = "confirmada" | "provavel" | "desconhecida";
 
 export interface TrackingEvent {
   id: string;

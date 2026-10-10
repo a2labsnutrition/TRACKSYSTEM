@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, CircleSlash, Compass, FlaskConical, Lightbulb, ListChecks, Target } from "lucide-react";
-import { BOTTLENECK_LABEL } from "@/lib/advisor/schema";
+import { AlertTriangle, CheckCircle2, CircleHelp, CircleSlash, Compass, FlaskConical, Lightbulb, ListChecks, RotateCcw, Target } from "lucide-react";
+import { BOTTLENECK_LABEL, normalizeParecer } from "@/lib/advisor/schema";
 import type { AdvisorReport } from "@/lib/data/types";
 import { STATUS_LABEL } from "@/lib/decision/rules";
 import { fmtDateTime } from "@/lib/format";
@@ -8,13 +8,15 @@ import { Badge } from "@/components/ui/badge";
 
 /** Exibe um Parecer salvo, na estrutura fixa do escopo. */
 export function ParecerView({ report, tz }: { report: AdvisorReport; tz: string }) {
-  const c = report.content;
+  const c = normalizeParecer(report.content);
   const ai = !report.model.startsWith("regras");
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <DecisionBadge status={c.veredito.status} large />
-        <span className="text-xs text-muted">Confiança {c.veredito.confianca}</span>
+        <span className="text-xs text-muted" title="Quanto os dados sustentam o veredito — não é a chance de dar certo">
+          Confiança {c.veredito.confianca}
+        </span>
         {report.rulesStatus && report.rulesStatus !== c.veredito.status ? (
           <Badge tone="warn">Regras diziam: {STATUS_LABEL[report.rulesStatus]}</Badge>
         ) : null}
@@ -28,6 +30,29 @@ export function ParecerView({ report, tz }: { report: AdvisorReport; tz: string 
         <p className="flex gap-2 rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {c.alerta_tracking}
         </p>
+      ) : null}
+
+      {c.o_que_nao_sabemos.length || c.o_que_mudaria_a_decisao.length ? (
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          {c.o_que_nao_sabemos.length ? (
+            <Section icon={<CircleHelp className="h-4 w-4" />} title="O que ainda não sabemos">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+                {c.o_que_nao_sabemos.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+          {c.o_que_mudaria_a_decisao.length ? (
+            <Section icon={<RotateCcw className="h-4 w-4" />} title="O que mudaria esta decisão">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+                {c.o_que_mudaria_a_decisao.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+        </div>
       ) : null}
 
       <Section icon={<Target className="h-4 w-4" />} title="Diagnóstico">

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptSecret } from "@/lib/crypto";
-import type { TrackingSite } from "@/lib/data/types";
+import type { ProductKind, TrackingSite } from "@/lib/data/types";
 import type {
   CapiLogEntry,
   EventRecord,
@@ -122,6 +122,11 @@ export function orderFromRow(r: any): OrderRecord {
     createdAt: r.created_at,
     paidAt: r.paid_at,
     refundedAt: r.refunded_at,
+    orderKind: r.order_kind ?? "main",
+    mainAmount: Number(r.main_amount ?? 0),
+    bumpAmount: Number(r.bump_amount ?? 0),
+    upsellAmount: Number(r.upsell_amount ?? 0),
+    items: r.items ?? null,
   };
 }
 
@@ -169,6 +174,11 @@ function orderToRow(ws: string, o: OrderRecord) {
     created_at: o.createdAt,
     paid_at: o.paidAt,
     refunded_at: o.refundedAt,
+    order_kind: o.orderKind,
+    main_amount: o.mainAmount,
+    bump_amount: o.bumpAmount,
+    upsell_amount: o.upsellAmount,
+    items: o.items,
     updated_at: new Date().toISOString(),
   };
 }
@@ -304,10 +314,12 @@ export class SupabaseIngestStore implements IngestStore {
     if (res.error?.code === "23505") {
       const { data } = await this.db
         .from("cakto_events_raw")
-        .select("id, processed")
+        .select("id, processed, duplicate_count")
         .eq("workspace_id", r.workspaceId)
         .eq("dedupe_key", r.dedupeKey)
         .maybeSingle();
+      // Entrega repetida (retentativa da Cakto): contamos para o painel de qualidade dos dados
+      if (data) await this.db.from("cakto_events_raw").update({ duplicate_count: Number(data.duplicate_count ?? 0) + 1 }).eq("id", data.id);
       return { inserted: false, id: data ? String(data.id) : null, alreadyProcessed: Boolean(data?.processed) };
     }
     const row = check(res, "gravar webhook bruto");
@@ -327,15 +339,16 @@ export class SupabaseIngestStore implements IngestStore {
     check(await this.db.from("orders").upsert(orderToRow(ws, o), { onConflict: "workspace_id,external_id" }), "salvar pedido");
   }
 
-  async productIdForCakto(ws: string, caktoProductId: string | null) {
+  async productForCakto(ws: string, caktoProductId: string | null) {
     if (!caktoProductId) return null;
     const { data } = await this.db
       .from("products")
-      .select("id")
+      .select("id, kind")
       .eq("workspace_id", ws)
       .contains("cakto_product_ids", [caktoProductId])
       .limit(1);
-    return (data?.[0]?.id as string) ?? null;
+    const row = data?.[0];
+    return row ? { id: row.id as string, kind: (row.kind ?? "principal") as ProductKind } : null;
   }
 
   async workspaceSettings(ws: string): Promise<WorkspaceSettings> {

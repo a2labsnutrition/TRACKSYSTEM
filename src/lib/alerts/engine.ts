@@ -37,6 +37,8 @@ export interface AlertInput {
   health: TrackingHealth;
   /** Fração do dia já transcorrida (fuso da conta), 0–1. */
   dayElapsed: number;
+  /** Verificações de anomalia (só as com status "anomalia" viram alerta). */
+  anomalies?: Array<{ code: string; title: string; status: string; severity: "critico" | "atencao" | "info"; detail: string; href?: string }>;
 }
 
 const SIGNAL_ALERT: Record<string, { type: string; title: string; severity?: AlertSeverity }> = {
@@ -48,6 +50,9 @@ const SIGNAL_ALERT: Record<string, { type: string; title: string; severity?: Ale
   saturacao_publico: { type: "saturacao", title: "Público saturando" },
   criativos_em_fadiga: { type: "fadiga", title: "Criativos em fadiga" },
   connect_rate_baixo: { type: "tracking_divergencia", title: "Cliques sem visualização da página" },
+  dados_incompletos: { type: "dados_incompletos", title: "Dados incompletos" },
+  vendas_sem_origem: { type: "vendas_sem_origem", title: "Vendas sem origem identificada" },
+  sem_margem: { type: "sem_margem", title: "Campanha sem produto (margem desconhecida)" },
 };
 
 export function computeAlerts(input: AlertInput): AlertCandidate[] {
@@ -174,6 +179,14 @@ export function computeAlerts(input: AlertInput): AlertCandidate[] {
   }
 
   const order = { critico: 0, atencao: 1, info: 2 };
+  // Anomalias (teste estatístico ou regra explícita) — evita repetir o que a saúde das conexões já alertou
+  for (const a of input.anomalies ?? []) {
+    if (a.status !== "anomalia" || a.severity === "info" || a.code === "capi_falhas") continue;
+    if (a.code === "webhook_cakto" && out.some((o) => o.type === "webhook_parado")) continue;
+    if (a.code === "sync_meta" && out.some((o) => o.type === "meta_erro")) continue;
+    push({ type: `anomalia_${a.code}`, severity: a.severity, entityLevel: "workspace", entityId: null, title: a.title, message: a.detail, href: a.href ?? null });
+  }
+
   return out.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 

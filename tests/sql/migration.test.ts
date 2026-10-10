@@ -42,7 +42,7 @@ describe("migrations SQL", () => {
       "insights_daily", "insights_breakdowns_daily", "tracking_sessions", "tracking_events", "capi_logs",
       "cakto_events_raw", "orders", "attribution_links", "alerts", "decision_rules", "advisor_reports", "user_notes",
       "niches", "subniches", "ad_references", "swipe_collections", "campaign_kits", "creative_assets", "flow_queue",
-      "pdf_projects", "pdf_versions", "integration_credentials", "sync_jobs", "entity_events",
+      "pdf_projects", "pdf_versions", "integration_credentials", "sync_jobs", "entity_events", "fx_rates",
     ]) expect(names).toContain(t);
   });
 

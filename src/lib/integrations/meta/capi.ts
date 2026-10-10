@@ -7,7 +7,8 @@ import { env } from "@/lib/env";
  * Deduplicação com o Pixel: mesmo event_name + event_id nos dois lados.
  */
 
-export type CapiEventName = "PageView" | "ViewContent" | "InitiateCheckout" | "AddPaymentInfo" | "Purchase" | "Lead";
+/** "OrderBump" é um evento personalizado (não padrão): não conta como compra no Meta. */
+export type CapiEventName = "PageView" | "ViewContent" | "InitiateCheckout" | "AddPaymentInfo" | "Purchase" | "Lead" | "OrderBump";
 
 export const BROWSER_EVENTS_TO_CAPI = new Set<CapiEventName>(["PageView", "ViewContent", "InitiateCheckout", "AddPaymentInfo", "Lead"]);
 

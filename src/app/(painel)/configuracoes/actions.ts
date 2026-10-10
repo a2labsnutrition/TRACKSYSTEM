@@ -61,6 +61,9 @@ export async function saveProduct(_: ActionState, form: FormData): Promise<Actio
       target_cpa: num(form.get("targetCpa")),
       max_cpa: num(form.get("maxCpa")),
       min_roas: num(form.get("minRoas")),
+      kind: ["principal", "order_bump", "upsell"].includes(String(form.get("kind"))) ? String(form.get("kind")) : "principal",
+      cost_per_sale: Math.max(0, num(form.get("costPerSale")) ?? 0),
+      cost_pct: Math.min(1, Math.max(0, pct(form.get("costPct")) ?? 0)),
       cakto_product_ids: String(form.get("caktoIds") ?? "")
         .split(/[\s,]+/)
         .map((s) => s.trim())
@@ -112,6 +115,31 @@ export async function linkCampaigns(_: ActionState, form: FormData): Promise<Act
     }
     revalidatePath("/", "layout");
     return { ok: true, message: `${n} campanha(s) atualizada(s).` };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Câmbio da conta de anúncios (gasto em moeda estrangeira → R$). */
+export async function saveAdAccountFx(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const { ctx } = await requireLiveWorkspace();
+    const id = String(form.get("id") ?? "");
+    if (!ctx.adAccounts.some((a) => a.id === id)) return { ok: false, message: "Conta não encontrada neste workspace." };
+    const mode = form.get("fxMode") === "manual" ? "manual" : "auto";
+    const manual = num(form.get("fxManualRate"));
+    const spread = pct(form.get("fxSpreadPct"));
+    if (mode === "manual" && !(manual && manual > 0)) return { ok: false, message: "Informe a cotação manual (R$ por unidade da moeda da conta)." };
+    if (spread != null && (spread < 0 || spread > 0.2)) return { ok: false, message: "IOF + spread deve ficar entre 0% e 20%." };
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase
+      .from("ad_accounts")
+      .update({ fx_mode: mode, fx_manual_rate: manual, fx_spread_pct: spread ?? 0.035 })
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("id", id);
+    if (error) return { ok: false, message: error.message };
+    revalidatePath("/", "layout");
+    return { ok: true, message: "Câmbio salvo." };
   } catch (e) {
     return { ok: false, message: (e as Error).message };
   }

@@ -42,16 +42,16 @@ type ColKey =
 const COLS: Record<ColKey, { label: string; num?: (r: CampaignTableRow) => number | null; render: (r: CampaignTableRow) => React.ReactNode }> = {
   budget: { label: "Orçamento", render: (r) => <span className="text-muted">{r.budget}</span> },
   spend: { label: "Gasto", num: (r) => r.spend, render: (r) => fmtBRL(r.spend) },
-  revenue: { label: "Receita líq.", num: (r) => r.revenue, render: (r) => fmtBRL(r.revenue) },
+  revenue: { label: "Faturamento", num: (r) => r.revenue, render: (r) => fmtBRL(r.revenue) },
   profit: {
-    label: "Lucro",
+    label: "Contribuição (est.)",
     num: (r) => r.profit,
     render: (r) => <span className={r.profit < 0 ? "text-bad" : r.profit > 0 ? "text-good" : ""}>{fmtBRL(r.profit)}</span>,
   },
-  purchases: { label: "Vendas", num: (r) => r.purchases, render: (r) => fmtInt(r.purchases) },
+  purchases: { label: "Compras", num: (r) => r.purchases, render: (r) => fmtInt(r.purchases) },
   metaPurchases: { label: "Compras Meta", num: (r) => r.metaPurchases, render: (r) => fmtInt(r.metaPurchases) },
-  cpa: { label: "CPA real", num: (r) => r.cpa, render: (r) => fmtBRL(r.cpa) },
-  roas: { label: "ROAS real", num: (r) => r.roas, render: (r) => fmtRoas(r.roas) },
+  cpa: { label: "CPA", num: (r) => r.cpa, render: (r) => fmtBRL(r.cpa) },
+  roas: { label: "ROAS bruto", num: (r) => r.roas, render: (r) => fmtRoas(r.roas) },
   ctr: { label: "CTR link", num: (r) => r.ctr, render: (r) => fmtPct(r.ctr, 2) },
   cpm: { label: "CPM", num: (r) => r.cpm, render: (r) => fmtBRL(r.cpm) },
   connectRate: {

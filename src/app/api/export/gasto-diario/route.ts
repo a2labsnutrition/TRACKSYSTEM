@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   lines.push(["data", "id", "nome", "nivel", "gasto"].join(";"));
   for (const e of m.entities) for (const d of m.dates) if (e.byDate[d]) lines.push([d, e.id, esc(e.name), level, num(e.byDate[d])].join(";"));
   lines.push("");
-  lines.push(["data", "gasto_total", "receita_liquida", "lucro", "vendas_pagas", "cpa_real", "roas_real", "gasto_acumulado", "lucro_acumulado"].join(";"));
+  lines.push(["data", "gasto_total", "faturamento_bruto", "lucro_contribuicao_estimado", "compras_principais", "cpa", "roas_bruto", "gasto_acumulado", "contribuicao_acumulada"].join(";"));
   for (const d of m.daily)
     lines.push([d.date, num(d.spend), num(d.revenue), num(d.profit), String(d.purchases), num(d.cpa), num(d.roas), num(d.cumSpend), num(d.cumProfit)].join(";"));
 

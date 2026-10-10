@@ -47,18 +47,54 @@ export interface CollectResult {
   afterResponse?: () => Promise<void>;
 }
 
+/** Host pertence ao domínio cadastrado do site (o próprio domínio ou subdomínio). */
+export function hostMatches(domain: string, candidate: string | null | undefined): boolean | null {
+  if (!candidate) return null;
+  let host: string;
+  try {
+    host = new URL(candidate).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  const d = domain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  const h = host.replace(/^www\./, "");
+  if (process.env.NODE_ENV !== "production" && (h === "localhost" || h === "127.0.0.1")) return true;
+  return h === d || h.endsWith(`.${d}`);
+}
+
+// ---- limite de taxa por IP+site (melhor esforço: memória da instância) ----
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 120;
+const buckets = new Map<string, { start: number; n: number }>();
+export function rateLimited(key: string, nowMs = Date.now()): boolean {
+  const b = buckets.get(key);
+  if (!b || nowMs - b.start > RATE_WINDOW_MS) {
+    buckets.set(key, { start: nowMs, n: 1 });
+    if (buckets.size > 20_000) for (const [k, v] of buckets) if (nowMs - v.start > RATE_WINDOW_MS) buckets.delete(k);
+    return false;
+  }
+  b.n++;
+  return b.n > RATE_MAX;
+}
+
 export async function processCollect(
   store: IngestStore,
   raw: unknown,
-  meta: { ip: string | null; userAgent: string | null; now?: Date },
+  meta: { ip: string | null; userAgent: string | null; now?: Date; origin?: string | null },
   opts: { sender?: CapiSender } = {},
 ): Promise<CollectResult> {
   const parsed = CollectSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, status: 400, error: "payload inválido" };
   const p = parsed.data;
+  if (meta.ip && rateLimited(`${meta.ip}|${p.site}`, meta.now?.getTime())) return { ok: false, status: 429, error: "muitos eventos" };
   const found = await store.findSiteByPublicKey(p.site);
   if (!found) return { ok: false, status: 404, error: "site não encontrado" };
   const { workspaceId, site } = found;
+  // Domínio cadastrado: rejeita eventos de outra origem (evita poluição dos dados por terceiros)
+  if (site.domain) {
+    const checks = [hostMatches(site.domain, meta.origin), hostMatches(site.domain, p.url)].filter((x) => x != null);
+    if (checks.some((x) => x === false)) return { ok: false, status: 403, error: "domínio não autorizado para este site" };
+  }
   const now = (meta.now ?? new Date()).toISOString();
 
   // Respeita consentimento quando o site exige

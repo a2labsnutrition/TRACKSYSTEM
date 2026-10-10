@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentMethod } from "@/lib/data/types";
+import type { OrderKind, OrderStatus, PaymentMethod } from "@/lib/data/types";
 import { sha256 } from "@/lib/crypto";
 import { toNumber } from "@/lib/utils";
 
@@ -87,6 +87,13 @@ export interface CaktoTracking {
   fbc: string | null;
 }
 
+export interface ParsedItem {
+  kind: OrderKind;
+  productId: string | null;
+  name: string | null;
+  amount: number;
+}
+
 export interface ParsedCaktoEvent {
   eventName: string;
   kind: CaktoKind;
@@ -102,6 +109,13 @@ export interface ParsedCaktoEvent {
   isOrderBump: boolean;
   isUpsell: boolean;
   parentOrderId: string | null;
+  /** Tipo do pedido: principal, ou um pedido inteiro de order bump/upsell. */
+  orderKind: OrderKind;
+  /** Itens encontrados no payload (vazio se a Cakto não detalhar). */
+  items: ParsedItem[];
+  mainAmount: number;
+  bumpAmount: number;
+  upsellAmount: number;
   productExternalId: string | null;
   productName: string | null;
   offerId: string | null;
@@ -248,6 +262,23 @@ export function parseCaktoWebhook(body: unknown): ParsedCaktoEvent {
   const isUpsell = /upsell|upsale/.test(type) || Boolean(pick(data, ["isUpsell", "is_upsell"]));
   const parentOrderId = str(pick(data, ["parent_order", "parentOrder", "parent_order_id", "mainOrderId"]));
 
+  // ---- Composição: itens do pedido (formatos tolerados) ----
+  const items = extractItems(data);
+  const orderKind: OrderKind = isOrderBump ? "bump" : isUpsell ? "upsell" : "main";
+  let bumpAmount = 0;
+  let upsellAmount = 0;
+  let mainAmount = 0;
+  if (orderKind === "main") {
+    bumpAmount = round2(items.filter((i) => i.kind === "bump").reduce((t, i) => t + i.amount, 0));
+    upsellAmount = round2(items.filter((i) => i.kind === "upsell").reduce((t, i) => t + i.amount, 0));
+    if (bumpAmount + upsellAmount > grossAmount + 0.01) {
+      warnings.push("Soma dos itens maior que o valor do pedido: composição ignorada");
+      bumpAmount = upsellAmount = 0;
+    }
+    mainAmount = round2(Math.max(0, grossAmount - bumpAmount - upsellAmount));
+  } else if (orderKind === "bump") bumpAmount = grossAmount;
+  else upsellAmount = grossAmount;
+
   const customerEmail = str(pick(data, ["customer.email", "customerEmail", "customer_email", "email", "buyer.email"]));
   const customerName = str(pick(data, ["customer.name", "customerName", "customer_name", "name", "buyer.name"]));
   const customerPhone = str(pick(data, ["customer.phone", "customerPhone", "customer_phone", "phone", "buyer.phone"]));
@@ -290,6 +321,11 @@ export function parseCaktoWebhook(body: unknown): ParsedCaktoEvent {
     isOrderBump,
     isUpsell,
     parentOrderId,
+    orderKind,
+    items,
+    mainAmount,
+    bumpAmount,
+    upsellAmount,
     productExternalId,
     productName,
     offerId,
@@ -307,4 +343,46 @@ export function parseCaktoWebhook(body: unknown): ParsedCaktoEvent {
     dedupeKey,
     warnings,
   };
+}
+
+function round2(v: number) {
+  return Math.round(v * 100) / 100;
+}
+
+const BUMP_LISTS = ["orderBumps", "order_bumps", "bumps", "orderbumps"];
+const UPSELL_LISTS = ["upsells", "upsell_items"];
+const ITEM_LISTS = ["items", "offers", "products", "orderItems", "order_items"];
+
+function itemKind(it: Json): OrderKind {
+  const t = String(it.type ?? it.offer_type ?? it.kind ?? (isObj(it.offer) ? (it.offer as Json).type : "") ?? "").toLowerCase();
+  if (/bump/.test(t) || it.isOrderBump === true || it.is_order_bump === true || it.orderbump === true) return "bump";
+  if (/upsell|upsale/.test(t) || it.isUpsell === true || it.is_upsell === true) return "upsell";
+  return "main";
+}
+
+function itemAmount(it: Json): number {
+  const v = num(it.amount ?? it.price ?? it.value ?? it.total ?? (isObj(it.offer) ? (it.offer as Json).price : undefined));
+  const qty = num(it.quantity ?? it.qty) ?? 1;
+  return v == null ? 0 : round2(v * (qty > 0 ? qty : 1));
+}
+
+/** Procura itens/ofertas/bumps no payload; aceita vários formatos. */
+export function extractItems(data: Json): ParsedItem[] {
+  const out: ParsedItem[] = [];
+  const add = (list: unknown, forced?: OrderKind) => {
+    if (!Array.isArray(list)) return;
+    for (const raw of list) {
+      if (!isObj(raw)) continue;
+      out.push({
+        kind: forced ?? itemKind(raw),
+        productId: str(pick(raw, ["product.id", "product_id", "productId", "id"])),
+        name: str(pick(raw, ["name", "product.name", "title", "offer.name"])),
+        amount: itemAmount(raw),
+      });
+    }
+  };
+  for (const k of BUMP_LISTS) add(data[k], "bump");
+  for (const k of UPSELL_LISTS) add(data[k], "upsell");
+  for (const k of ITEM_LISTS) add(data[k]);
+  return out;
 }

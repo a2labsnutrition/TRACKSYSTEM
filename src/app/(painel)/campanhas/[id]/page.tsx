@@ -5,6 +5,7 @@ import { campaignDetail } from "@/lib/analytics";
 import { getRepository } from "@/lib/data";
 import { env } from "@/lib/env";
 import { STATUS_LABEL } from "@/lib/decision/rules";
+import { VERDICT_LABEL, type CreativeVerdict } from "@/lib/creative/intelligence";
 import { fmtBRL, fmtDate, fmtDec, fmtInt, fmtPct, fmtRoas } from "@/lib/format";
 import { periodFrom, withPeriod, type SearchParams } from "@/lib/page";
 import { todayIn } from "@/lib/tz";
@@ -23,6 +24,27 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Stat } from "@/components/ui/stat";
 import { Table, TableWrap, Td, Th } from "@/components/ui/table";
+import { AttributionSplitView } from "@/components/intel/attribution-split";
+import { ConfidencePanel } from "@/components/intel/confidence-panel";
+import { FinancialBreakdown } from "@/components/intel/financial-breakdown";
+import { RecommendationCard } from "@/components/intel/recommendation-card";
+import type { Tone } from "@/components/ui/badge";
+
+const VERDICT_TONE: Record<CreativeVerdict, Tone> = {
+  destaque_comprovado: "good",
+  sinal_positivo: "info",
+  abaixo_comprovado: "bad",
+  gasto_sem_venda: "bad",
+  inconclusivo: "neutral",
+  pouco_gasto: "neutral",
+};
+
+const BREAKEVEN_SOURCE: Record<string, string> = {
+  produto: "equilíbrio do produto (preço − taxas − impostos − custos)",
+  configurado: "definido por você no produto",
+  medido: "equilíbrio medido nas vendas (sem produto vinculado)",
+  padrao: "valor padrão — vincule o produto",
+};
 
 const RANK_LABEL: Record<string, { label: string; tone: "good" | "bad" | "neutral" }> = {
   ABOVE_AVERAGE: { label: "Acima da média", tone: "good" },
@@ -49,17 +71,8 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
   const dec = row.decision;
   const maxFunnel = Math.max(1, funnel[0].value);
 
-  // Ranking de criativos: com venda primeiro (menor CPA), depois por CTR
-  const ranked = [...d.adPerf].sort((a, b) => {
-    if (a.cpaReal != null && b.cpaReal != null) return a.cpaReal - b.cpaReal;
-    if (a.cpaReal != null) return -1;
-    if (b.cpaReal != null) return 1;
-    return (b.derived.ctrLink ?? 0) - (a.derived.ctrLink ?? 0);
-  });
-  const withSpend = ranked.filter((a) => a.meta.spend > 0);
-  const winner = withSpend.find((a) => a.cpaReal != null);
-  const loser = [...withSpend].reverse().find((a) => a.meta.spend > (row.product?.targetCpa ?? 50) && (a.cpaReal == null || a.cpaReal > (row.product?.maxCpa ?? Infinity)));
-
+  const creatives = [...d.creatives.ads].sort((a, b) => b.meta.spend - a.meta.spend);
+  const up = d.finWithPool;
   return (
     <>
       <Link href={withPeriod("/campanhas", period)} className="mb-3 inline-flex items-center gap-1 text-xs text-muted hover:text-text">
@@ -88,14 +101,29 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
       <Card className="mb-5 overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-border bg-panel-2/50 px-4 py-3">
           <DecisionBadge status={dec.status} large />
-          <span className="text-xs text-muted">Confiança {dec.confidence}</span>
-          <span className="ml-auto text-xs text-faint">Veredito das regras · atualizado a cada sincronização</span>
+          <span className="ml-auto text-xs text-faint">Diagnóstico do motor · consultivo: nada é alterado na sua conta</span>
         </div>
         <CardBody>
           <p className="text-base font-medium">
             {STATUS_LABEL[dec.status]}: {dec.headline}
           </p>
           {dec.missingData ? <p className="mt-1 text-sm text-muted">{dec.missingData}</p> : null}
+          {campaign.effectiveStatus === "ACTIVE" ? (
+            <p className="mt-2 text-xs text-muted">
+              {dec.cpa.purchases > 0 ? (
+                <>
+                  CPA 7 dias {fmtBRL(dec.cpa.point)} · intervalo de 95%: {fmtBRL(dec.cpa.lower)} a {dec.cpa.upper == null ? "∞" : fmtBRL(dec.cpa.upper)} ({dec.cpa.purchases} compra(s) com origem)
+                </>
+              ) : (
+                <>Nenhuma compra com origem nesta campanha nos últimos 7 dias</>
+              )}{" "}
+              · CPA máximo {fmtBRL(dec.limitCpa)}{" "}
+              <span className="text-faint">({BREAKEVEN_SOURCE[row.config.breakevenSource ?? "padrao"]})</span> · {row.daysActive} dia(s) com gasto nos últimos 7 · fuso {row.timezone}
+            </p>
+          ) : null}
+          <div className="mt-3">
+            <ConfidencePanel a={dec.confidenceDetail} />
+          </div>
           {dec.signals.length ? (
             <ul className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
               {dec.signals.map((s) => {
@@ -137,7 +165,7 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
                 <div key={label as string} className="rounded-lg border border-border bg-bg/40 px-3 py-2">
                   <p className="text-faint">{label as string}</p>
                   <p className="tabular">
-                    {fmtBRL(win.spend)} · {win.purchases} venda(s)
+                    {fmtBRL(win.spend)} · {win.purchases} compra(s)
                   </p>
                   <p className="tabular text-muted">
                     CPA {fmtBRL(win.cpa)} · ROAS {fmtRoas(win.roas)}
@@ -163,6 +191,14 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
               )}
             </div>
           </div>
+          {dec.recommendations.length ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Recomendações (por prioridade)</p>
+              {dec.recommendations.map((r, i) => (
+                <RecommendationCard key={`${r.action}-${i}`} rec={r} />
+              ))}
+            </div>
+          ) : null}
         </CardBody>
       </Card>
 
@@ -202,13 +238,72 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
         </CardBody>
       </Card>
 
+      {up ? (
+        <p className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+          {k.fin.mainPurchases === 0 ? "Resultado indeterminado: nenhuma compra com origem nesta campanha, mas há" : "Há"} {d.unattributedPool} compra(s) sem origem no
+          período que podem ser desta campanha. Cada número abaixo mostra o intervalo entre “só vendas com origem” e “se todas as vendas sem origem fossem daqui” — o
+          real está entre os dois.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Gasto" metric="spend" value={fmtBRL(k.meta.spend)} />
-        <Stat label="Receita líquida" metric="netRevenue" value={fmtBRL(k.real.netRevenue)} />
-        <Stat label="Lucro" metric="profit" value={fmtBRL(k.profit.profit)} className={k.profit.profit < 0 ? "border-bad/40" : ""} />
-        <Stat label="CPA real" metric="cpaReal" value={fmtBRL(k.profit.cpaReal)} sub={`alvo ${fmtBRL(row.product?.targetCpa ?? null)}`} />
-        <Stat label="ROAS real" metric="roasReal" value={fmtRoas(k.profit.roasReal)} sub={`Meta ${fmtRoas(k.derived.roasMeta)}`} />
-        <Stat label="Vendas pagas" metric="purchases" value={fmtInt(k.real.paidOrders)} sub={`Meta ${fmtInt(k.meta.purchases)}`} />
+        <Stat label="Gasto" metric="spend" value={fmtBRL(k.meta.spend)} sub={k.fx.estimated ? "câmbio estimado" : undefined} />
+        <Stat
+          label="Faturamento bruto"
+          metric="grossRevenue"
+          value={up ? <RangeValue a={fmtBRL(k.fin.grossApproved)} b={fmtBRL(up.grossApproved)} /> : fmtBRL(k.fin.grossApproved)}
+          sub="vendas com origem nesta campanha"
+        />
+        <Stat
+          label="Lucro de contribuição"
+          metric="profit"
+          value={up ? <RangeValue a={fmtBRL(k.fin.contribution)} b={fmtBRL(up.contribution)} /> : fmtBRL(k.fin.contribution)}
+          sub="estimado"
+          className={!up && k.fin.contribution < 0 ? "border-bad/40" : ""}
+        />
+        <Stat
+          label="CPA"
+          metric="cpaReal"
+          value={up ? <RangeValue a={fmtBRL(up.cpa)} b={k.fin.cpa == null ? "indefinido" : fmtBRL(k.fin.cpa)} /> : fmtBRL(k.fin.cpa)}
+          sub={`máximo ${fmtBRL(row.config.maxCpa)}`}
+        />
+        <Stat
+          label="ROAS bruto"
+          metric="roasReal"
+          value={up ? <RangeValue a={fmtRoas(k.fin.roasGross)} b={fmtRoas(up.roasGross)} /> : fmtRoas(k.fin.roasGross)}
+          sub={`Meta ${fmtRoas(k.derived.roasMeta)}`}
+        />
+        <Stat
+          label="Compras (principal)"
+          metric="purchases"
+          value={fmtInt(k.fin.mainPurchases)}
+          sub={up ? `+${d.unattributedPool} sem origem · Meta ${fmtInt(k.meta.purchases)}` : `Meta ${fmtInt(k.meta.purchases)}`}
+        />
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Resultado financeiro da campanha" description="Só vendas com origem nesta campanha (confirmada ou provável)" />
+          <CardBody>
+            <FinancialBreakdown fin={k.fin} spendEstimated={k.fx.estimated} undetermined={Boolean(up)} />
+            {up ? (
+              <p className="mt-3 rounded-lg border border-border bg-bg/40 px-3 py-2 text-xs text-muted">
+                <b className="text-text">Cenário-limite</b> (se as {d.unattributedPool} compra(s) sem origem fossem desta campanha): faturamento {fmtBRL(up.grossApproved)}, lucro de
+                contribuição {fmtBRL(up.contribution)}, CPA {fmtBRL(up.cpa)}, ROAS {fmtRoas(up.roasGross)}. Não é uma estimativa do resultado — é o limite superior.
+              </p>
+            ) : null}
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Origem das vendas" description="Confirmada × provável × desconhecida — e o número do Meta à parte" />
+          <CardBody className="space-y-3">
+            <AttributionSplitView split={k.attribution} metaPurchases={k.meta.purchases} />
+            {d.unattributedPool > 0 ? (
+              <p className="rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+                {d.unattributedPool} compra(s) no período ({fmtBRL(d.unattributedRevenue)} de faturamento) sem campanha identificada. Podem ter vindo desta campanha, mas não entram no CPA dela — nem no de nenhum criativo.
+              </p>
+            ) : null}
+          </CardBody>
+        </Card>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-5">
@@ -280,7 +375,7 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
 
       {/* -------- Conjuntos -------- */}
       <Card className="mt-5">
-        <CardHeader title="Conjuntos de anúncios" description="Desempenho real (Cakto) por conjunto" />
+        <CardHeader title="Conjuntos de anúncios" description="Compras principais com origem no conjunto (Cakto); métricas de mídia do Meta" />
         <TableWrap>
           <Table>
             <thead>
@@ -288,9 +383,9 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
                 <Th>Conjunto</Th>
                 <Th>Público</Th>
                 <Th className="text-right">Gasto</Th>
-                <Th className="text-right">Vendas</Th>
-                <Th className="text-right">CPA real</Th>
-                <Th className="text-right">ROAS real</Th>
+                <Th className="text-right">Compras</Th>
+                <Th className="text-right">CPA</Th>
+                <Th className="text-right">ROAS bruto</Th>
                 <Th className="text-right">CTR</Th>
                 <Th className="text-right">Connect</Th>
                 <Th className="text-right">Freq.</Th>
@@ -330,86 +425,130 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
       {/* -------- Criativos -------- */}
       <Card className="mt-5">
         <CardHeader
-          title="Criativos"
-          description={
-            <>
-              Ranking por CPA real; fadiga = CTR ou hook caiu ≥25% vs. início com frequência ≥2.{" "}
-              {winner ? <span className="text-good">Vencedor: {winner.name}. </span> : null}
-              {loser ? <span className="text-bad">Pior: {loser.name}.</span> : null}
-            </>
-          }
+          title="Inteligência de criativos"
+          description="Gasto alto = previsão do algoritmo do Meta, não prova de venda. “Comprovado” só com teste estatístico contra o restante da campanha."
         />
+        {d.creatives.notes.length || d.creatives.tests.length ? (
+          <div className="grid grid-cols-1 gap-3 border-b border-border px-4 py-3 text-sm md:grid-cols-2">
+            <ul className="space-y-1">
+              {d.creatives.notes.map((n, i) => (
+                <li key={i} className="flex gap-2 text-xs text-muted">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" /> {n}
+                </li>
+              ))}
+            </ul>
+            <ul className="space-y-1.5">
+              {d.creatives.tests.map((t, i) => (
+                <li key={i} className="rounded-lg border border-violet/30 bg-violet/5 px-3 py-2 text-xs">
+                  <b className="text-violet">{t.title}.</b> <span className="text-muted">{t.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <TableWrap>
           <Table>
             <thead>
               <tr>
-                <Th>#</Th>
                 <Th>Anúncio</Th>
+                <Th>Leitura</Th>
                 <Th className="text-right">Gasto</Th>
-                <Th className="text-right">Vendas</Th>
-                <Th className="text-right">CPA real</Th>
+                <Th className="text-right">Compras</Th>
+                <Th className="text-right">CPA (IC 95%)</Th>
                 <Th className="text-right">ROAS</Th>
                 <Th className="text-right">
                   <span className="inline-flex items-center gap-1">CTR <InfoTip metric="ctrLink" /></span>
                 </Th>
+                <Th className="text-right">CPC</Th>
+                <Th className="text-right">Custo/checkout</Th>
                 <Th className="text-right">
                   <span className="inline-flex items-center gap-1">Hook <InfoTip metric="hookRate" /></span>
                 </Th>
                 <Th className="text-right">
-                  <span className="inline-flex items-center gap-1">Hold <InfoTip metric="holdRate" /></span>
+                  <span className="inline-flex items-center gap-1">Retenção <InfoTip metric="holdRate" /></span>
                 </Th>
-                <Th>Sinais</Th>
+                <Th className="text-right">Freq.</Th>
               </tr>
             </thead>
             <tbody>
-              {ranked.map((a, i) => (
-                <tr key={a.id} className="align-top hover:bg-panel-2/50">
-                  <Td className="text-faint">{i + 1}</Td>
-                  <Td className="max-w-96 whitespace-normal">
-                    <div className="flex gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-panel-2 text-faint">
-                        {a.ad.creative?.thumbnailUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={a.ad.creative.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                        ) : a.ad.creative?.format === "video" ? (
-                          <Film className="h-5 w-5" />
-                        ) : (
-                          <ImageIcon className="h-5 w-5" />
-                        )}
+              {creatives.map((a) => {
+                const ad = d.adPerf.find((x) => x.id === a.id);
+                return (
+                  <tr key={a.id} className="align-top hover:bg-panel-2/50">
+                    <Td className="max-w-80 whitespace-normal">
+                      <div className="flex gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-panel-2 text-faint">
+                          {ad?.ad.creative?.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={ad.ad.creative.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                          ) : ad?.ad.creative?.format === "video" ? (
+                            <Film className="h-5 w-5" />
+                          ) : (
+                            <ImageIcon className="h-5 w-5" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium" title={a.name}>{a.name}</p>
+                          {ad?.ad.creative?.body ? <p className="line-clamp-2 text-xs text-muted">{ad.ad.creative.body}</p> : null}
+                          <p className="text-[11px] text-faint">
+                            {ad?.ad.creative?.format === "video" ? "Vídeo" : ad?.ad.creative?.format === "carousel" ? "Carrossel" : "Imagem"}
+                            {a.status !== "ACTIVE" ? " · pausado" : ""}
+                            {ad?.rankings.quality && RANK_LABEL[ad.rankings.quality] ? ` · qualidade: ${RANK_LABEL[ad.rankings.quality].label}` : ""}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium" title={a.name}>{a.name}</p>
-                        {a.ad.creative?.body ? <p className="line-clamp-2 text-xs text-muted">{a.ad.creative.body}</p> : null}
-                        <p className="text-[11px] text-faint">
-                          {a.ad.creative?.format === "video" ? "Vídeo" : a.ad.creative?.format === "carousel" ? "Carrossel" : "Imagem"}
-                          {a.ad.creative?.callToAction ? ` · CTA ${a.ad.creative.callToAction}` : ""}
-                          {a.status !== "ACTIVE" ? " · pausado" : ""}
-                        </p>
+                    </Td>
+                    <Td className="min-w-64 whitespace-normal">
+                      <div className="flex flex-wrap gap-1">
+                        <Badge tone={VERDICT_TONE[a.verdict]}>{VERDICT_LABEL[a.verdict]}</Badge>
+                        {a.fatigue?.fatigued ? <Badge tone="warn">Fadiga</Badge> : null}
                       </div>
-                    </div>
-                  </Td>
-                  <Td className="text-right">{fmtBRL(a.meta.spend)}</Td>
-                  <Td className="text-right">{fmtInt(a.realPurchases)}</Td>
-                  <Td className="text-right font-medium">{fmtBRL(a.cpaReal)}</Td>
-                  <Td className="text-right">{fmtRoas(a.roasReal)}</Td>
-                  <Td className="text-right">{fmtPct(a.derived.ctrLink, 2)}</Td>
-                  <Td className="text-right">{fmtPct(a.derived.hookRate, 0)}</Td>
-                  <Td className="text-right">{fmtPct(a.derived.holdRate, 0)}</Td>
-                  <Td className="whitespace-normal">
-                    <div className="flex max-w-56 flex-wrap gap-1">
-                      {a === winner ? <Badge tone="good">Vencedor</Badge> : null}
-                      {a === loser ? <Badge tone="bad">Queimando verba</Badge> : null}
-                      {a.fatigue.fatigued ? <Badge tone="warn" title={a.fatigue.reason ?? ""}>Fadiga: {a.fatigue.reason}</Badge> : null}
-                      {a.rankings.quality && RANK_LABEL[a.rankings.quality] ? (
-                        <Badge tone={RANK_LABEL[a.rankings.quality].tone}>Qualidade: {RANK_LABEL[a.rankings.quality].label}</Badge>
+                      <ul className="mt-1 space-y-0.5 text-[11px] text-muted">
+                        {a.reasons.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                      {a.distributionNote ? <p className="mt-1 text-[11px] text-warn">{a.distributionNote}</p> : null}
+                    </Td>
+                    <Td className="text-right">
+                      {fmtBRL(a.meta.spend)}
+                      <span className="block text-[11px] text-faint">{fmtPct(a.spendShare, 0)} do gasto</span>
+                    </Td>
+                    <Td className="text-right">
+                      {fmtInt(a.purchases)}
+                      {a.confirmed ? <span className="block text-[11px] text-faint">{a.confirmed} confirmada(s)</span> : null}
+                    </Td>
+                    <Td className="text-right">
+                      <span className="font-medium">{fmtBRL(a.cpa)}</span>
+                      {a.purchases > 0 ? (
+                        <span className="block text-[11px] text-faint">
+                          {fmtBRL(a.cpaLower)}–{a.cpaUpper == null ? "∞" : fmtBRL(a.cpaUpper)}
+                        </span>
                       ) : null}
-                    </div>
-                  </Td>
-                </tr>
-              ))}
+                    </Td>
+                    <Td className="text-right">{fmtRoas(a.roas)}</Td>
+                    <Td className={cn("text-right", a.ctrVsRest === "maior" && "text-good", a.ctrVsRest === "menor" && "text-bad")}>{fmtPct(a.derived.ctrLink, 2)}</Td>
+                    <Td className="text-right">{fmtBRL(a.derived.cpcLink)}</Td>
+                    <Td className="text-right">{fmtBRL(a.derived.costPerCheckout)}</Td>
+                    <Td className="text-right">{fmtPct(a.derived.hookRate, 0)}</Td>
+                    <Td className="text-right">
+                      {a.retention ? (
+                        <span title={`25%: ${fmtPct(a.retention.p25, 0)} · 50%: ${fmtPct(a.retention.p50, 0)} · 75%: ${fmtPct(a.retention.p75, 0)} · 100%: ${fmtPct(a.retention.p100, 0)} (das views de 3s)`}>
+                          {fmtPct(a.derived.holdRate, 0)}
+                          <span className="block text-[11px] text-faint">50%: {fmtPct(a.retention.p50, 0)}</span>
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
+                    <Td className="text-right">{fmtDec(a.derived.frequency, 1)}</Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
         </TableWrap>
+        <p className="px-4 py-2 text-[11px] text-faint">{d.creatives.method}</p>
       </Card>
 
       {/* -------- Anotações -------- */}
@@ -432,5 +571,14 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
         </CardBody>
       </Card>
     </>
+  );
+}
+
+function RangeValue({ a, b }: { a: string; b: string }) {
+  return (
+    <span className="block text-lg leading-tight sm:text-xl">
+      {a}
+      <span className="block text-xs font-medium text-muted">até {b}</span>
+    </span>
   );
 }
