@@ -177,12 +177,18 @@ export default async function Conexoes({ searchParams }: { searchParams: SearchP
               <p className="font-medium">Como criar o acesso (uma vez só, ~5 min)</p>
               <ol className="list-decimal space-y-1.5 pl-5 text-muted">
                 <li>
-                  Acesse <b>business.facebook.com → Configurações do negócio → Usuários do sistema</b> → Adicionar (função Admin).
+                  Sem app? Em <b>developers.facebook.com → Meus apps → Criar app</b>, escolha o caso de uso de anúncios/Marketing API (ou “Outro” →
+                  tipo “Empresa”) e selecione o seu portfólio empresarial.
                 </li>
-                <li>Em “Atribuir ativos”, dê acesso à sua conta de anúncios e ao Pixel.</li>
                 <li>
-                  “Gerar token” → escolha seu app (crie um em developers.facebook.com, tipo “Empresa”, se não tiver) → marque as permissões{" "}
-                  <code className="text-text">{META_SCOPES.join(", ")}</code> → validade “Nunca”.
+                  Em <b>business.facebook.com → Configurações → Usuários do sistema</b> → Adicionar (função Admin).
+                </li>
+                <li>
+                  “Atribuir ativos”: o <b>app</b> (controle total), a <b>conta de anúncios</b> (controle total) e o <b>conjunto de dados</b> — é o novo
+                  nome do Pixel no Meta (gerenciar).
+                </li>
+                <li>
+                  “Gerar token” → escolha o app → marque as permissões <code className="text-text">{META_SCOPES.join(", ")}</code> → validade “Nunca”.
                 </li>
                 <li>Copie o token e cole na Opção B.</li>
               </ol>
@@ -230,7 +236,7 @@ export default async function Conexoes({ searchParams }: { searchParams: SearchP
           <CardBody className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ActionForm action={savePixel} submitLabel="Salvar Pixel" disabled={!canSave} disabledReason={blockedReason}>
               <div>
-                <Label>Pixel ID</Label>
+                <Label>ID do Pixel (conjunto de dados)</Label>
                 {apiPixels.length ? (
                   <Select name="pixelId" defaultValue={pixel?.pixel_id ?? apiPixels[0].id} className="w-full">
                     {apiPixels.map((p) => (
@@ -325,7 +331,7 @@ export default async function Conexoes({ searchParams }: { searchParams: SearchP
                         </div>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                           <div>
-                            <Label>Pixel ID</Label>
+                            <Label>ID do Pixel (conjunto de dados)</Label>
                             <Input name="pixelId" defaultValue={sites[0].pixelId ?? ""} />
                           </div>
                           <div>
