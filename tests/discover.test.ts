@@ -78,3 +78,14 @@ describe("armazenamento (demo)", () => {
     expect(k!.sections.length).toBe(2);
   });
 });
+
+import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import * as S from "@/lib/discover/schemas";
+
+describe("schemas da IA", () => {
+  it("todos convertem para saída estruturada", () => {
+    for (const schema of [S.ReferenceAnalysisSchema, S.NicheSeedSchema, S.PlanSchema, S.OfferSchema, S.LandingSchema, S.VslSchema, S.AngleScriptsSchema, S.ComplianceRewriteSchema]) {
+      expect(() => betaZodOutputFormat(schema)).not.toThrow();
+    }
+  });
+});
