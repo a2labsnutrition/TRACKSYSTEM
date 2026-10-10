@@ -7,8 +7,8 @@ import { env } from "@/lib/env";
  *   - Base: https://api.cakto.com.br/public_api/
  *   - Autenticação: Authorization: Bearer <token>
  *   - Recursos de webhooks (/public_api/webhook/) e de pedidos (orders/list).
- * NÃO confirmado (o site de docs não pôde ser lido daqui): o endpoint exato de
- * emissão de token e os nomes dos campos/paginação da listagem de pedidos.
+ *   - Token: POST /public_api/token/ com client_id e client_secret (form).
+ * NÃO confirmado: os nomes dos campos/paginação da listagem de pedidos.
  * Por isso: endpoints configuráveis, parser tolerante e erros explicativos.
  * Para ajustar, edite só este arquivo.
  */
@@ -31,15 +31,35 @@ export class CaktoApiError extends Error {
   }
 }
 
+/** Trecho da resposta de erro da Cakto, sem as credenciais (para mostrar na tela). */
+function errorHint(text: string, c: CaktoApiCredentials): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  for (const secret of [c.clientSecret, c.clientId]) if (secret) t = t.split(secret).join("***");
+  if (/<html/i.test(t)) return "";
+  return t ? ` Resposta: ${t.slice(0, 200)}` : "";
+}
+
+/**
+ * Token: POST /public_api/token/ com client_id e client_secret em form
+ * (formato da documentação oficial: docs.cakto.com.br/authentication).
+ */
 export async function caktoToken(c: CaktoApiCredentials, fetchImpl: typeof fetch = fetch): Promise<string> {
   const res = await fetchImpl(`${env.caktoApiBase}${TOKEN_PATH}`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "client_credentials", client_id: c.clientId, client_secret: c.clientSecret }).toString(),
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    body: new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret }).toString(),
     cache: "no-store",
   });
   const text = await res.text();
-  if (!res.ok) throw new CaktoApiError(`Cakto recusou as credenciais (HTTP ${res.status}). Confira client_id/secret na Cakto → Integrações → API.`, res.status, text);
+  if (!res.ok) {
+    const why =
+      res.status === 404
+        ? "endereço do token não encontrado (ajuste CAKTO_TOKEN_PATH)"
+        : res.status === 400 || res.status === 401 || res.status === 403
+          ? "credenciais recusadas — gere uma chave nova em Cakto → Integrações → API e cole client_id e client_secret sem espaços"
+          : "erro no servidor da Cakto, tente de novo em alguns minutos";
+    throw new CaktoApiError(`Cakto recusou o pedido de token (HTTP ${res.status}): ${why}.${errorHint(text, c)}`, res.status, text);
+  }
   try {
     const json = JSON.parse(text) as { access_token?: string; token?: string };
     const tok = json.access_token ?? json.token;
