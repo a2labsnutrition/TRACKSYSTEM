@@ -15,6 +15,11 @@ export const WS_COOKIE = "cc_ws";
 /** Cenário do modo demo: "caso-real" (dia 1, conta em US$, vendas sem origem) ou o demo completo. */
 export const SCENARIO_COOKIE = "cc_cenario";
 
+/** Página que explica como instalar o banco (sem segredos: só a mensagem do Postgres/PostgREST). */
+export function dbErrorUrl(message: string): string {
+  return `/erro-banco?m=${encodeURIComponent(message.slice(0, 300))}`;
+}
+
 function demoRepo(scenario: string | undefined, email: string | null): Repository {
   return scenario === "caso-real" ? new CasoRealRepository(email) : new DemoRepository(email);
 }
@@ -37,10 +42,12 @@ export const getRepository = cache(async (): Promise<Repository> => {
   if (!user) redirect("/login");
   if (jar.get(DEMO_COOKIE)?.value === "1") return demoRepo(scenario, user.email ?? null);
 
-  const { data: memberships } = await supabase
+  const { data: memberships, error: memErr } = await supabase
     .from("workspace_members")
     .select("workspace_id, workspaces(id, name, timezone, currency, tax_rate, default_fee_rate, notify)")
     .eq("user_id", user.id);
+  // Erro de banco (tabela/coluna inexistente) ≠ "sem workspace": não mandar para o onboarding em loop
+  if (memErr) redirect(dbErrorUrl(memErr.message));
   if (!memberships?.length) redirect("/onboarding");
 
   const wanted = jar.get(WS_COOKIE)?.value;
@@ -48,11 +55,12 @@ export const getRepository = cache(async (): Promise<Repository> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = (Array.isArray(m.workspaces) ? m.workspaces[0] : m.workspaces) as any;
 
-  const { data: accounts } = await supabase
+  const { data: accounts, error: accErr } = await supabase
     .from("ad_accounts")
     .select("id, meta_account_id, name, currency, timezone, account_status, last_synced_at, fx_mode, fx_manual_rate, fx_spread_pct")
     .eq("workspace_id", w.id)
     .eq("is_active", true);
+  if (accErr) redirect(dbErrorUrl(accErr.message));
 
   const ctx: WorkspaceContext = {
     mode: "live",
