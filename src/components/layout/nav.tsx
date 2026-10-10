@@ -31,12 +31,12 @@ const MAIN = [
   { href: "/saude", label: "Saúde do tracking", icon: Activity },
   { href: "/descobrir", label: "Descobrir & Criar", icon: Compass },
   { href: "/kits", label: "Kits de campanha", icon: Layers },
+  { href: "/criativos", label: "Criativos", icon: Film },
   { href: "/conexoes", label: "Conexões", icon: Plug },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
 const SOON = [
-  { label: "Criativos (Flow)", icon: Film, phase: "Fase 4" },
   { label: "Estúdio de PDF", icon: FileText, phase: "Fase 4" },
 ];
 
