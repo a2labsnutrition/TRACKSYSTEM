@@ -89,3 +89,91 @@ describe("schemas da IA", () => {
     }
   });
 });
+
+import { buildCampaignStructure } from "@/lib/discover/structure";
+import { scanText, scanValue } from "@/lib/discover/compliance";
+import { buildLovablePrompt, lovableUrl, LOVABLE_MAX_PROMPT } from "@/lib/discover/lovable";
+import { buildLandingHtml, miniMarkdown } from "@/lib/discover/landing-html";
+import type { LandingContent } from "@/lib/discover/schemas";
+
+describe("estrutura da campanha", () => {
+  it("orçamento de teste = 3× CPA máximo por criativo e nomenclatura no padrão", () => {
+    const s = buildCampaignStructure({ productName: "Fature com IA", price: 97, maxCpa: 60, feeRate: 0.05, taxRate: 0, dailyBudget: 100, angles: ["Renda extra", "Praticidade", "Medo de ficar para trás"], date: "2026-10-10" });
+    expect(s.teste.orcamentoPorCriativo).toBe(180);
+    expect(s.teste.totalTeste).toBe(180 * 9);
+    expect(s.teste.diasEstimados).toBe(17);
+    expect(s.teste.conjuntos[0].anuncios[0]).toBe("[fatureComIa]_rendaExtra_amplo_c01_1010");
+    expect(s.teste.conjuntos[2].anuncios[2]).toBe("[fatureComIa]_medoDeFicarPara_amplo_c09_1010");
+    expect(s.utms).toContain("utm_content={{ad.name}}|{{ad.id}}");
+    expect(s.cpaMaximoOrigem).toBe("informado");
+  });
+  it("sem CPA usa o preço (com aviso) e sem preço não inventa número", () => {
+    const a = buildCampaignStructure({ productName: "X", price: 100, maxCpa: null, feeRate: 0.1, taxRate: 0.05, dailyBudget: null, angles: [], date: "2026-10-10" });
+    expect(a.cpaMaximo).toBe(85);
+    expect(a.cpaMaximoOrigem).toBe("estimado_pelo_preco");
+    expect(a.avisos.length).toBe(1);
+    const b = buildCampaignStructure({ productName: "X", price: null, maxCpa: null, feeRate: 0.1, taxRate: 0, dailyBudget: 50, angles: [], date: "2026-10-10" });
+    expect(b.cpaMaximo).toBeNull();
+    expect(b.teste.totalTeste).toBeNull();
+  });
+});
+
+describe("verificador de políticas", () => {
+  it("sinaliza promessas arriscadas e ignora texto limpo", () => {
+    const rules = (t: string) => scanText(t, "x").map((f) => f.rule);
+    expect(rules("Ganhe R$ 5.000 por mês com IA")).toContain("renda_valor");
+    expect(rules("Perca 10 kg em 30 dias")).toContain("saude_peso");
+    expect(rules("Veja o antes e depois das alunas")).toContain("antes_depois");
+    expect(rules("Você está endividado e cansado?")).toContain("atributo_pessoal");
+    expect(rules("Resultado garantido ou seu dinheiro de volta")).toContain("resultado_garantido");
+    expect(rules("Só hoje: últimas 3 vagas")).toContain("urgencia");
+    expect(rules("Aprenda a criar receitas saudáveis com garantia de 7 dias")).toEqual([]);
+  });
+  it("varre objetos, mostra o trecho original e remove duplicados", () => {
+    const flags = scanValue({ a: ["Emagreça 5 kg já", "Emagreça 5 kg já"], b: { c: "ok" } }, "Oferta");
+    expect(flags).toHaveLength(1);
+    expect(flags[0].excerpt).toContain("Emagreça 5 kg");
+    expect(flags[0].section).toBe("Oferta");
+  });
+});
+
+const landing: LandingContent = {
+  tipo_pagina: "Página curta",
+  paleta: { primaria: "#1d4ed8", fundo: "#ffffff", texto: "#111111", destaque: "#facc15" },
+  tipografia: "Inter",
+  cta_texto: "Quero começar",
+  secoes: [
+    { titulo: "Aprenda <hoje>", objetivo: "gancho", copy: "Texto **forte**\n\n- item 1\n- item 2\n\n[DEPOIMENTO REAL DE ALUNO]", tem_botao_checkout: true },
+    { titulo: "Garantia", objetivo: "reduzir risco", copy: "7 dias.", tem_botao_checkout: false },
+  ],
+  provas_a_coletar: [],
+};
+
+describe("Lovable e HTML", () => {
+  const snippet = '<script src="https://app.exemplo.com/t.js" data-site="s_1" async></script>';
+  it("prompt leva script no head, links de checkout com data-track e não pede Pixel", () => {
+    const p = buildLovablePrompt({ landing, productName: "Curso", checkoutUrl: "https://pay.cakto.com.br/abc", trackingSnippet: snippet });
+    expect(p).toContain(snippet);
+    expect(p).toContain('<a href="https://pay.cakto.com.br/abc" data-track="checkout">Quero começar</a>');
+    expect(p).toMatch(/Não adicione código de Pixel/);
+    expect(p).toContain("[DEPOIMENTO REAL DE ALUNO]");
+    expect(lovableUrl(p).startsWith("https://lovable.dev/#prompt=")).toBe(true);
+    expect(decodeURIComponent(lovableUrl(p).split("#prompt=")[1])).toBe(p);
+  });
+  it("prompt respeita o limite de 50.000 caracteres", () => {
+    const big = { ...landing, secoes: [{ ...landing.secoes[0], copy: "a".repeat(60_000) }] };
+    expect(buildLovablePrompt({ landing: big, productName: "C", checkoutUrl: null, trackingSnippet: null }).length).toBeLessThanOrEqual(LOVABLE_MAX_PROMPT);
+  });
+  it("HTML escapa conteúdo, inclui o script e os botões de checkout", () => {
+    const h = buildLandingHtml({ landing, productName: "Curso", checkoutUrl: "https://pay.cakto.com.br/abc", trackingSnippet: snippet });
+    expect(h).toContain(snippet);
+    expect(h).toContain("Aprenda &lt;hoje&gt;");
+    expect(h).toContain('href="https://pay.cakto.com.br/abc" data-track="checkout"');
+    expect(h.match(/data-track="checkout"/g)).toHaveLength(1);
+    const bad = buildLandingHtml({ landing, productName: "C", checkoutUrl: "javascript:alert(1)", trackingSnippet: null });
+    expect(bad).not.toContain("javascript:");
+  });
+  it("markdown simples", () => {
+    expect(miniMarkdown("Olá **mundo**\n\n- a\n- b")).toBe("<p>Olá <strong>mundo</strong></p>\n<ul><li>a</li><li>b</li></ul>");
+  });
+});
