@@ -85,3 +85,13 @@ describe("ciclo de aprendizado", () => {
     expect(p).toContain("um por parágrafo");
   });
 });
+
+describe("ideias coladas de uma campanha", () => {
+  it("lê ângulo, gancho e cenas no formato pedido", () => {
+    const md = 'Sobre a campanha: curso de doces.\n\n## Ângulo: Renda na cozinha\nPor que: o vídeo de bastidores vai bem.\nGancho: "Comecei com uma panela"\n### Prompts para o Google Flow\n- **Panela no fogão** (9:16, 8s): Close-up of a pot of brigadeiro being stirred on a stove\n- **Embalagem** (4:5, 6s): Hands placing sweets into small gift boxes on a wooden table\n';
+    const s = scenesFromScripts(md, "markdown", false);
+    expect(s).toHaveLength(2);
+    expect(s[0]).toMatchObject({ angle: "Renda na cozinha", hook: "Comecei com uma panela", ratio: "9:16", durationS: 8 });
+    expect(s[1].ratio).toBe("4:5");
+  });
+});

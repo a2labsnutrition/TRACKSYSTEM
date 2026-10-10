@@ -7,6 +7,7 @@ import { ALLOWED_EXT, extOf, MAX_UPLOAD_MB, nextAdName, pickToday, scenePriority
 import { getCreativeStore, learnFromMeta } from "@/lib/creative";
 import { angleLessons } from "@/lib/creative/learning";
 import { CREATIVE_BUCKET, ensureCreativeBucket, objectExists, removeObject, signedUpload } from "@/lib/creative/storage";
+import { campaignBrief, generateCampaignIdeas } from "@/lib/creative/campaign-ideas";
 import { getDiscoverStore } from "@/lib/discover";
 import { latestSections } from "@/lib/discover/store";
 import { isServiceRoleConfigured } from "@/lib/env";
@@ -171,6 +172,35 @@ export async function deleteAssetAction(id: string): Promise<ActionState> {
     const a = await store.deleteAsset(id);
     if (a && mode === "live" && isServiceRoleConfigured()) await removeObject(CREATIVE_BUCKET, a.storagePath).catch(() => undefined);
     return done("Criativo removido.");
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Ideias de criativos a partir de uma campanha do Meta (IA integrada). */
+export async function campaignIdeasAction(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    if (!hasAi()) return { ok: false, message: "Sem ANTHROPIC_API_KEY: use “Copiar prompt” e cole a resposta em “Colar ideias”." };
+    const campaignId = str(form, "campaignId");
+    if (!campaignId) return { ok: false, message: "Escolha a campanha." };
+    const { repo, workspace } = await getCreativeStore();
+    const brief = await campaignBrief(repo, (await getDiscoverStore()).store, workspace, campaignId);
+    if (!brief) return { ok: false, message: "Campanha não encontrada." };
+    const { ideas, scenes } = await generateCampaignIdeas(brief, str(form, "focus"));
+    const n = await addScenes(scenes, null);
+    return done(`${ideas.sobre} — ${ideas.ideias.length} ideia(s), ${n} prompt(s) na lista de espera.`);
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Resposta colada da IA grátis (formato "## Ângulo" + "### Prompts para o Google Flow"). */
+export async function pastedIdeasAction(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const scenes = scenesFromScripts(str(form, "text") ?? "", "markdown", false);
+    if (!scenes.length) return { ok: false, message: "Não encontrei prompts. A resposta precisa ter “## Ângulo: …” e a lista em “### Prompts para o Google Flow”. Se veio em outro formato, use “Colar prompts”." };
+    const n = await addScenes(scenes, null);
+    return done(`${n} prompt(s) de ${new Set(scenes.map((s) => s.angle)).size} ideia(s) na lista de espera.`);
   } catch (e) {
     return fail(e);
   }

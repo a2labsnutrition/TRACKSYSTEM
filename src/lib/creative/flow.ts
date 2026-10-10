@@ -105,13 +105,20 @@ export function scenesFromScripts(data: unknown, format: "structured" | "markdow
     }
   } else if (typeof data === "string") {
     let angle = "";
+    let hook: string | null = null;
     let inPrompts = false;
     for (const raw of data.split("\n")) {
       const line = raw.trim();
       const ang = /^##\s+Ângulo:\s*(.+)$/i.exec(line);
       if (ang) {
         angle = ang[1].trim();
+        hook = null;
         inPrompts = false;
+        continue;
+      }
+      const hk = /^(?:\*\*)?Gancho:?(?:\*\*)?:?\s*(.+)$/i.exec(line);
+      if (hk && !inPrompts) {
+        hook = hk[1].replace(/^["“]|["”]$/g, "").trim();
         continue;
       }
       if (/^###\s+/.test(line)) {
@@ -122,7 +129,7 @@ export function scenesFromScripts(data: unknown, format: "structured" | "markdow
       const m = inPrompts ? /^[-*]\s+(?:\*\*(.+?)\*\*)?\s*(?:\(([^)]*)\))?\s*:?\s*(.+)$/.exec(line) : null;
       if (m && m[3].length > 15) {
         const dur = /(\d+)\s*s/.exec(m[2] ?? "");
-        base.push({ title: m[1] ?? m[3].slice(0, 40), angle: angle || "geral", prompt: m[3], ratio: normalizeRatio(m[2]), durationS: dur ? Number(dur[1]) : null, hook: null });
+        base.push({ title: m[1] ?? m[3].slice(0, 40), angle: angle || "geral", prompt: m[3], ratio: normalizeRatio(m[2]), durationS: dur ? Number(dur[1]) : null, hook });
       }
     }
   }

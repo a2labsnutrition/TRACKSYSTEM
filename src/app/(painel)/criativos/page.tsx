@@ -2,6 +2,7 @@ import { Clapperboard, ExternalLink, Film } from "lucide-react";
 import { hasAi } from "@/lib/ai/structured";
 import { getCreativeStore, learnFromMeta } from "@/lib/creative";
 import { manualFlowPrompt } from "@/lib/creative/ai";
+import { campaignBrief, manualCampaignPrompt } from "@/lib/creative/campaign-ideas";
 import { CREATION_PLATFORMS, flowPromptText, isVideo, type FlowQueueItem } from "@/lib/creative/flow";
 import { angleLessons, type LearnedCreative } from "@/lib/creative/learning";
 import { CREATIVE_BUCKET, signedUrls } from "@/lib/creative/storage";
@@ -9,6 +10,7 @@ import { VERDICT_LABEL } from "@/lib/creative/intelligence";
 import { getDiscoverStore } from "@/lib/discover";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { fmtBRL, fmtDate } from "@/lib/format";
+import { sp, type SearchParams } from "@/lib/page";
 import { todayIn } from "@/lib/tz";
 import { ActionButton, ActionForm } from "@/components/action-form";
 import { CopyAndOpen, RenameAsset, Uploader } from "@/components/creative/creative-client";
@@ -21,10 +23,12 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import {
   addPastedAction,
   buildTodayAction,
+  campaignIdeasAction,
   deleteAssetAction,
   deleteQueueItemAction,
   generateScenesAction,
   importFromKitAction,
+  pastedIdeasAction,
   setQueueStatusAction,
 } from "./actions";
 
@@ -34,13 +38,17 @@ export const maxDuration = 300;
 const ACTION_TONE = { repetir: "good", testar_mais: "neutral", abandonar: "bad" } as const;
 const ACTION_LABEL = { repetir: "Repetir", testar_mais: "Testar mais", abandonar: "Abandonar" } as const;
 
-export default async function Criativos() {
+export default async function Criativos({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const campaignId = sp(params, "campanha") ?? "";
   const ai = hasAi();
   const { store, repo, workspace, mode } = await getCreativeStore();
   const live = mode === "live";
   const today = todayIn(workspace.timezone);
   const [queue, assets, products, kitsStore] = await Promise.all([store.listQueue(), store.listAssets(), repo.products(), getDiscoverStore()]);
-  const kits = await kitsStore.store.listKits();
+  const [kits, campaigns] = await Promise.all([kitsStore.store.listKits(), repo.campaigns()]);
+  const brief = campaignId ? await campaignBrief(repo, kitsStore.store, workspace, campaignId).catch(() => null) : null;
+  const sortedCampaigns = [...campaigns].sort((a, b) => Number(b.effectiveStatus === "ACTIVE") - Number(a.effectiveStatus === "ACTIVE") || a.name.localeCompare(b.name));
   const kitById = new Map(kits.map((k) => [k.id, k]));
 
   let learned: LearnedCreative[] = [];
@@ -86,6 +94,57 @@ export default async function Criativos() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="min-w-0 space-y-5 xl:col-span-2">
+          <Card>
+            <CardHeader
+              title="Ideias a partir de uma campanha"
+              description="Escolha a campanha em que está trabalhando: o sistema lê o produto, os textos e links dos anúncios e o que já vende ou não, e sugere criativos novos com os prompts prontos."
+            />
+            <CardBody className="space-y-4">
+              <form action="/criativos" className="flex flex-wrap items-center gap-2">
+                <Select name="campanha" defaultValue={campaignId} className="min-w-0 flex-1">
+                  <option value="">Escolha a campanha…</option>
+                  {sortedCampaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.effectiveStatus === "ACTIVE" ? "● " : "○ "}
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+                <button type="submit" className="h-9 rounded-lg border border-border-strong bg-panel-2 px-3 text-sm hover:bg-border">
+                  Analisar
+                </button>
+              </form>
+              {campaignId && !brief ? <p className="text-xs text-bad">Campanha não encontrada.</p> : null}
+              {brief ? (
+                <>
+                  <div className="rounded-lg border border-border bg-bg/40 p-3">
+                    <p className="mb-1 text-xs font-medium text-muted">O que o sistema identificou</p>
+                    <ul className="list-disc space-y-0.5 pl-4 text-xs text-muted">
+                      {brief.summary.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  {ai ? (
+                    <ActionForm action={campaignIdeasAction} submitLabel="Gerar ideias com IA">
+                      <input type="hidden" name="campaignId" value={brief.campaignId} />
+                      <Input name="focus" placeholder="Foco opcional (ex.: depoimentos, bastidores, Black Friday)" />
+                    </ActionForm>
+                  ) : null}
+                  <div className="space-y-2 rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CopyButton text={manualCampaignPrompt(brief, null)} label="Copiar prompt (IA grátis)" />
+                      <span className="text-xs text-faint">Cole no ChatGPT, Claude.ai ou Gemini e traga a resposta abaixo.</span>
+                    </div>
+                    <ActionForm action={pastedIdeasAction} submitLabel="Colar ideias na lista de espera" variant="secondary">
+                      <Textarea name="text" rows={5} placeholder="Cole aqui a resposta completa da IA" />
+                    </ActionForm>
+                  </div>
+                </>
+              ) : null}
+            </CardBody>
+          </Card>
+
           <Card>
             <CardHeader
               title={`Fila de hoje (${todo.length})`}
