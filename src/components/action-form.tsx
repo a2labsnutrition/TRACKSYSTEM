@@ -39,7 +39,7 @@ export function ActionForm({
   const [state, formAction, pending] = useActionState<ActionState, FormData>(action, { ok: true, message: "" });
   return (
     <form action={formAction} className={cn("space-y-3", className)}>
-      <fieldset disabled={disabled || pending} className="space-y-3">
+      <fieldset disabled={disabled || pending} className="min-w-0 space-y-3">
         {children}
         <Button type="submit" size="sm" variant={variant}>
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}

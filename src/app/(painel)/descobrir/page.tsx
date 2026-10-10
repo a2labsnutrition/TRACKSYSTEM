@@ -111,7 +111,7 @@ export default async function Descobrir({ searchParams }: { searchParams: Search
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {rows.map(({ n, score }) => (
-          <Link key={n.slug} href={`/descobrir/${n.slug}`} className="group">
+          <Link key={n.slug} href={`/descobrir/${n.slug}`} className="group min-w-0">
             <Card className="h-full p-4 transition-colors group-hover:border-border-strong">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

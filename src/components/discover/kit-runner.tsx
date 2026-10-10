@@ -55,7 +55,7 @@ export function KitRunner({ kitId, existing, hasAi, autoStart }: { kitId: string
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={() => run(missing)} disabled={running || !missing.length}>
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {missing.length ? `Criar tudo (${missing.length} seção${missing.length > 1 ? "ões" : ""})` : "Kit completo"}
+          {missing.length ? `Criar tudo (${missing.length} ${missing.length > 1 ? "seções" : "seção"})` : "Kit completo"}
         </Button>
         {!hasAi ? <span className="text-xs text-warn">Configure ANTHROPIC_API_KEY na Vercel para gerar plano, oferta, página, VSL e roteiros.</span> : null}
         {running ? <span className="text-xs text-muted">Pode levar alguns minutos — não feche a página.</span> : null}

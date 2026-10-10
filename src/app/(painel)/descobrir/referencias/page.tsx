@@ -36,7 +36,7 @@ export default async function Referencias({ searchParams }: { searchParams: Sear
       <PageHeader title="Referências e swipe" description="Anúncios de referência com origem e data, análise da IA e coleções para organizar o estudo." />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
+        <div className="min-w-0 space-y-5 xl:col-span-2">
           <form action="/descobrir/referencias" className="flex flex-wrap items-center gap-2">
             <Select name="nicho" defaultValue={nicho}>
               <option value="">Todos os nichos</option>
@@ -72,7 +72,7 @@ export default async function Referencias({ searchParams }: { searchParams: Sear
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Card>
             <CardHeader title="Importar referência" description="Link + dados que você vê na Biblioteca de Anúncios." />
             <CardBody>

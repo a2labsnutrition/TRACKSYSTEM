@@ -177,3 +177,32 @@ describe("Lovable e HTML", () => {
     expect(miniMarkdown("Olá **mundo**\n\n- a\n- b")).toBe("<p>Olá <strong>mundo</strong></p>\n<ul><li>a</li><li>b</li></ul>");
   });
 });
+
+import { BUY_BUTTON, landingMarkdown, sectionToMarkdown } from "@/lib/discover/markdown";
+import { splitMarkdownSections } from "@/lib/discover/landing-html";
+import { adsManagerSteps } from "@/lib/discover/structure";
+
+describe("markdown do kit", () => {
+  it("página vira markdown com botão e volta em seções no HTML", () => {
+    const md = landingMarkdown(landing);
+    expect(md).toContain(`## Aprenda <hoje>`);
+    expect(md).toContain(BUY_BUTTON);
+    expect(splitMarkdownSections(md).map((s) => s.titulo)).toEqual(["", "Aprenda <hoje>", "Garantia", "Provas reais a coletar"]);
+    const h = buildLandingHtml({ landing: md, productName: "C", checkoutUrl: "https://pay.cakto.com.br/x", trackingSnippet: null });
+    expect(h.match(/data-track="checkout"/g)).toHaveLength(1);
+    expect(h).not.toContain("<hoje>");
+  });
+  it("versão editada (markdown) é exibida como está e o prompt do Lovable usa o texto", () => {
+    expect(sectionToMarkdown("offer", { format: "markdown", data: "## Minha oferta" })).toBe("## Minha oferta");
+    const p = buildLovablePrompt({ landing: `## Topo\n\n${BUY_BUTTON}`, productName: "C", checkoutUrl: "https://pay.cakto.com.br/x", trackingSnippet: null });
+    expect(p).toContain('<a href="https://pay.cakto.com.br/x" data-track="checkout">');
+    expect(p).toContain("## Topo");
+  });
+  it("passo a passo do Gerenciador usa nomes, UTMs e Pixel", () => {
+    const s = buildCampaignStructure({ productName: "Curso X", price: 100, maxCpa: 50, feeRate: 0, taxRate: 0, dailyBudget: 90, angles: ["Dor"], date: "2026-10-10" });
+    const steps = adsManagerSteps(s, { pageUrl: "https://meusite.com", pixelId: "123" }).join("\n");
+    expect(steps).toContain("[cursoX]_vendas_teste_1010");
+    expect(steps).toContain("**123**");
+    expect(steps).toContain(s.utms);
+  });
+});

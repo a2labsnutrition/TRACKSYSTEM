@@ -54,7 +54,7 @@ export default async function NichePage({ params }: { params: Promise<{ slug: st
       />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
+        <div className="min-w-0 space-y-5 xl:col-span-2">
           <Card>
             <CardHeader
               title={
@@ -95,7 +95,7 @@ export default async function NichePage({ params }: { params: Promise<{ slug: st
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Card>
             <CardHeader title="Plano de ataque" description="Cria o kit e gera tudo: plano (5+ ângulos), oferta, página + prompt do Lovable, VSL, roteiros, estrutura da campanha e políticas." />
             <CardBody>

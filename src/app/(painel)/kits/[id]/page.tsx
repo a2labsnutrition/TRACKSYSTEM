@@ -154,15 +154,17 @@ export default async function KitPage({ params, searchParams }: { params: Promis
                       <Markdown text={md} />
                     </SectionEditor>
                   ) : (
-                    <p className="text-sm text-muted">
-                      {needsAi
-                        ? "Configure ANTHROPIC_API_KEY na Vercel para gerar esta seção."
-                        : needsPlan
-                          ? "Gere o plano de ataque primeiro — esta seção parte dele."
-                          : kind === "compliance"
-                            ? "Gere a oferta, a página, a VSL ou os roteiros e depois verifique."
-                            : "Ainda não gerada."}
-                    </p>
+                    <SectionEditor kitId={kit.id} kind={kind} markdown="">
+                      <p className="text-sm text-muted">
+                        {needsAi
+                          ? "Configure ANTHROPIC_API_KEY na Vercel para gerar esta seção com IA — ou escreva manualmente."
+                          : needsPlan
+                            ? "Gere o plano de ataque primeiro — esta seção parte dele (ou escreva manualmente)."
+                            : kind === "compliance"
+                              ? "Gere a oferta, a página, a VSL ou os roteiros e depois verifique."
+                              : "Ainda não gerada."}
+                      </p>
+                    </SectionEditor>
                   )}
                 </CardBody>
               </Card>
@@ -170,7 +172,7 @@ export default async function KitPage({ params, searchParams }: { params: Promis
           })}
         </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Card>
             <CardHeader title="Dados do produto" description="Usados pela IA, pela estrutura da campanha e pelo prompt do Lovable." />
             <CardBody>
