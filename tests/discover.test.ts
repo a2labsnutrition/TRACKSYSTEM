@@ -206,3 +206,20 @@ describe("markdown do kit", () => {
     expect(steps).toContain(s.utms);
   });
 });
+
+import { vi } from "vitest";
+vi.mock("server-only", () => ({}));
+
+describe("prompt para IA grátis", () => {
+  it("leva regras, dados do kit, tarefa e formato markdown que volta para o kit", async () => {
+    const { manualPrompt, manualCompliancePrompt } = await import("@/lib/discover/ai");
+    const ctx = { nicheSlug: "culinaria", subnicheSlug: "confeitaria", inputs: { productName: "Doces Lucrativos", price: 47 }, refs: [], plan: "## Ângulos\n### 1. Renda em casa", offer: null };
+    const p = manualPrompt("scripts", ctx, ["Renda em casa", "Presente"]);
+    expect(p).toContain("Nunca invente dados");
+    expect(p).toContain('"Renda em casa", "Presente"');
+    expect(p).toContain("Doces Lucrativos");
+    expect(p).toContain("markdown simples");
+    expect(manualPrompt("landing", ctx)).toContain("[BOTÃO DE COMPRA]");
+    expect(manualCompliancePrompt([{ trecho: "Ganhe R$ 5.000", regra: "renda", secao: "Oferta" }], ctx)).toContain("Ganhe R$ 5.000");
+  });
+});

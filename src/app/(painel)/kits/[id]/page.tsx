@@ -2,9 +2,11 @@ import { ArrowLeft, Download, ExternalLink, Rocket } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hasAi } from "@/lib/ai/structured";
+import { manualCompliancePrompt, manualPrompt } from "@/lib/discover/ai";
+import { buildKitContext, planAngles } from "@/lib/discover/kit-service";
 import { loadKitView, pickSection } from "@/lib/discover/kit-view";
 import { lovableUrl } from "@/lib/discover/lovable";
-import { sectionToMarkdown } from "@/lib/discover/markdown";
+import { sectionToMarkdown, type ComplianceData } from "@/lib/discover/markdown";
 import { findNiche, findSubniche } from "@/lib/discover/niches";
 import { adsManagerSteps, buildCampaignStructure } from "@/lib/discover/structure";
 import { SECTION_LABEL, SECTION_ORDER, type KitSectionKind } from "@/lib/discover/types";
@@ -39,12 +41,25 @@ export default async function KitPage({ params, searchParams }: { params: Promis
   }
   const view = await loadKitView(id, versions);
   if (!view) notFound();
-  const { kit, sections, workspace, site, trackingSnippet, landing, lovablePrompt, mode } = view;
+  const { kit, sections, workspace, site, trackingSnippet, landing, lovablePrompt, mode, store } = view;
   const ai = hasAi();
   const niche = findNiche(kit.nicheSlug);
   const sub = niche ? findSubniche(niche, kit.subnicheSlug) : undefined;
   const existing = SECTION_ORDER.filter((k) => sections.some((s) => s.kind === k));
   const hasPlan = existing.includes("plan");
+
+  // Prompts para colar em qualquer IA (ChatGPT, Claude.ai, Gemini) — funciona sem chave de API
+  const ctx = await buildKitContext(store, kit, sections);
+  const angles = planAngles(pickSection(sections, "plan"));
+  const prompts: Partial<Record<KitSectionKind, string>> = {};
+  for (const k of AI_KINDS) prompts[k] = manualPrompt(k as "plan", ctx, angles);
+  const comp = pickSection(sections, "compliance");
+  if (comp?.format === "structured" && (comp.data as ComplianceData).flags.length) {
+    prompts.compliance = manualCompliancePrompt(
+      (comp.data as ComplianceData).flags.map((f) => ({ trecho: f.excerpt, regra: f.label, secao: f.section })),
+      ctx,
+    );
+  }
 
   const structure = buildCampaignStructure({
     productName: view.productName,
@@ -104,13 +119,12 @@ export default async function KitPage({ params, searchParams }: { params: Promis
                   }
                   description={cur ? `${cur.note ?? ""} · ${fmtDateTime(cur.createdAt, workspace.timezone)}` : undefined}
                   action={
-                    <SectionGenerate
-                      kitId={kit.id}
-                      kind={kind}
-                      exists={Boolean(cur)}
-                      disabled={needsAi || needsPlan}
-                      disabledReason={needsAi ? "Configure ANTHROPIC_API_KEY" : "Gere o plano de ataque primeiro"}
-                    />
+                    <>
+                      {prompts[kind] ? <CopyButton text={prompts[kind]} label={kind === "compliance" ? "Copiar prompt de reescrita" : "Copiar prompt"} /> : null}
+                      {needsAi ? null : (
+                        <SectionGenerate kitId={kit.id} kind={kind} exists={Boolean(cur)} disabled={needsPlan} disabledReason="Gere o plano de ataque primeiro" />
+                      )}
+                    </>
                   }
                 />
                 {all.length > 1 ? (
@@ -138,7 +152,7 @@ export default async function KitPage({ params, searchParams }: { params: Promis
                             <a href={lovableUrl(lovablePrompt)} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size: "sm" })}>
                               Abrir no Lovable <ExternalLink className="h-3.5 w-3.5" />
                             </a>
-                            <CopyButton text={lovablePrompt} label="Copiar prompt" />
+                            <CopyButton text={lovablePrompt} label="Copiar prompt do Lovable" />
                             <a href={`/api/kits/${kit.id}/landing${landing ? `?v=${landing.version}` : ""}`} className={buttonVariants({ size: "sm", variant: "secondary" })}>
                               <Download className="h-3.5 w-3.5" /> Baixar HTML
                             </a>
@@ -157,9 +171,9 @@ export default async function KitPage({ params, searchParams }: { params: Promis
                     <SectionEditor kitId={kit.id} kind={kind} markdown="">
                       <p className="text-sm text-muted">
                         {needsAi
-                          ? "Configure ANTHROPIC_API_KEY na Vercel para gerar esta seção com IA — ou escreva manualmente."
+                          ? "Clique em “Copiar prompt”, cole no ChatGPT, Claude.ai ou Gemini (grátis), copie a resposta e cole aqui em “Colar resposta”."
                           : needsPlan
-                            ? "Gere o plano de ataque primeiro — esta seção parte dele (ou escreva manualmente)."
+                            ? "Gere o plano de ataque primeiro — esta seção parte dele (ou use “Copiar prompt” numa IA grátis)."
                             : kind === "compliance"
                               ? "Gere a oferta, a página, a VSL ou os roteiros e depois verifique."
                               : "Ainda não gerada."}

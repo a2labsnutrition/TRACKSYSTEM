@@ -95,6 +95,15 @@ export async function generateNicheSeed(niche: Niche): Promise<NicheSeed> {
   return { ...data, generatedAt: new Date().toISOString(), model };
 }
 
+/** Tarefas de cada seção (as mesmas na IA integrada e no prompt para copiar). */
+const TASK = {
+  plan: "Monte o plano de ataque para lançar um infoproduto neste nicho: público (dores, desejos, objeções), no mínimo 5 ângulos, tipo de produto ideal, faixa de preço, estrutura de oferta e a estratégia de página e de criativo que tende a vender mais neste nicho, com justificativa.",
+  offer: "Escreva a oferta completa a partir do plano de ataque: nome, promessa, mecanismo, estrutura do produto, bônus, garantia, preço e ancoragem, order bump, upsell e FAQ de objeções. Se o produto já tem preço definido, respeite.",
+  landing: "Escreva a página de vendas: estrutura de seções recomendada para o nicho e a copy completa de cada seção, pronta para publicar. Marque quais seções têm botão de checkout. Paleta em hexadecimal.",
+  vsl: "Escreva o roteiro da VSL em duas versões (longa e curta de 60–90s), com marcação de tempo, fala completa e sugestão de b-roll/telas.",
+  scripts: "no mínimo 10 ganchos diferentes, 3 roteiros (15s, 30s e 60s) em formatos variados (UGC, talking head, demonstração, storytelling, depoimento) com texto principal, título, descrição e a hipótese de teste de cada um, e 3 a 5 prompts de cena para gerar vídeo/imagem no Google Flow (em inglês, com proporção 9:16, 1:1 ou 4:5).",
+};
+
 export interface KitContext {
   nicheSlug: string;
   subnicheSlug: string | null;
@@ -126,7 +135,7 @@ export async function generatePlan(k: KitContext) {
     schema: PlanSchema,
     system: DISCOVER_SYSTEM,
     maxTokens: 12000,
-    user: `Monte o plano de ataque para lançar um infoproduto neste nicho: público (dores, desejos, objeções), no mínimo 5 ângulos, tipo de produto ideal, faixa de preço, estrutura de oferta e a estratégia de página e de criativo que tende a vender mais neste nicho, com justificativa.\n${kitPayload(k)}`,
+    user: `${TASK.plan}\n${kitPayload(k)}`,
   });
 }
 
@@ -135,7 +144,7 @@ export async function generateOffer(k: KitContext) {
     schema: OfferSchema,
     system: DISCOVER_SYSTEM,
     maxTokens: 12000,
-    user: `Escreva a oferta completa a partir do plano de ataque: nome, promessa, mecanismo, estrutura do produto, bônus, garantia, preço e ancoragem, order bump, upsell e FAQ de objeções. Se o produto já tem preço definido, respeite.\n${kitPayload(k)}`,
+    user: `${TASK.offer}\n${kitPayload(k)}`,
   });
 }
 
@@ -144,7 +153,7 @@ export async function generateLanding(k: KitContext) {
     schema: LandingSchema,
     system: DISCOVER_SYSTEM,
     maxTokens: 16000,
-    user: `Escreva a página de vendas: estrutura de seções recomendada para o nicho e a copy completa de cada seção, pronta para publicar. Marque quais seções têm botão de checkout. Paleta em hexadecimal.\n${kitPayload(k)}`,
+    user: `${TASK.landing}\n${kitPayload(k)}`,
   });
 }
 
@@ -153,7 +162,7 @@ export async function generateVsl(k: KitContext) {
     schema: VslSchema,
     system: DISCOVER_SYSTEM,
     maxTokens: 16000,
-    user: `Escreva o roteiro da VSL em duas versões (longa e curta de 60–90s), com marcação de tempo, fala completa e sugestão de b-roll/telas.\n${kitPayload(k)}`,
+    user: `${TASK.vsl}\n${kitPayload(k)}`,
   });
 }
 
@@ -161,13 +170,14 @@ export async function generateVsl(k: KitContext) {
 export async function generateScripts(k: KitContext, angles: string[]): Promise<{ data: ScriptsContent; model: string }> {
   const list = angles.slice(0, 6);
   if (!list.length) throw new Error("Gere o plano de ataque antes: os roteiros partem dos ângulos dele.");
+  const offerSummary = !k.offer ? null : typeof k.offer === "string" ? k.offer.slice(0, 3000) : { nome: k.offer.nome, promessa: k.offer.promessa_principal, preco: k.offer.preco };
   const results = await Promise.all(
     list.map((angulo) =>
       structured({
         schema: AngleScriptsSchema,
         system: DISCOVER_SYSTEM,
         maxTokens: 10000,
-        user: `Escreva os criativos para o ângulo "${angulo}": no mínimo 10 ganchos diferentes, 3 roteiros (15s, 30s e 60s) em formatos variados (UGC, talking head, demonstração, storytelling, depoimento) com texto principal, título, descrição e a hipótese de teste de cada um, e 3 a 5 prompts de cena para gerar vídeo/imagem no Google Flow (em inglês, com proporção 9:16, 1:1 ou 4:5).\n${kitPayload({ ...k, plan: null }, { angulo, oferta_resumo: !k.offer ? null : typeof k.offer === "string" ? k.offer.slice(0, 3000) : { nome: k.offer.nome, promessa: k.offer.promessa_principal, preco: k.offer.preco } })}`,
+        user: `Escreva os criativos para o ângulo "${angulo}": ${TASK.scripts}\n${kitPayload({ ...k, plan: null }, { angulo, oferta_resumo: offerSummary })}`,
       }),
     ),
   );
@@ -181,4 +191,52 @@ export async function generateComplianceRewrites(flags: Array<{ trecho: string; 
     maxTokens: 8000,
     user: `Estes trechos do kit foram sinalizados pelo verificador de políticas. Para cada um, explique o problema e proponha uma reescrita que mantenha a força de venda sem violar as políticas do Meta (e CONAR/ANVISA quando for saúde).\n${JSON.stringify({ ...nicheContext(k.nicheSlug, k.subnicheSlug), trechos: flags.slice(0, 40) })}`,
   });
+}
+
+const MANUAL_FORMAT: Record<"plan" | "offer" | "landing" | "vsl" | "scripts", string> = {
+  plan: "## Público (com listas de dores, desejos e objeções), ## Ângulos (cada um como \"### 1. Nome do ângulo\", com ideia, gancho de exemplo e por quê), ## Produto, ## Preço, ## Estrutura da oferta, ## Estratégia de página, ## Estratégia de criativo, ## Riscos, ## O que ainda não sabemos",
+  offer: "## Nome e promessa, ## Mecanismo, ## Estrutura do produto, ## Bônus, ## Garantia, ## Preço, ## Order bump, ## Upsell, ## Perguntas frequentes",
+  landing: "uma seção \"## Título\" para cada bloco da página, na ordem, com a copy completa; nas seções com botão de compra, uma linha sozinha com [BOTÃO DE COMPRA]; no início, uma linha em itálico com tipo de página, cores em hexadecimal, fonte e texto do botão",
+  vsl: "## VSL longa e ## VSL curta (60–90s), cada bloco com tempo (mm:ss–mm:ss), nome do bloco, fala completa e sugestão de tela",
+  scripts: "uma seção \"## Ângulo: nome\" por ângulo, com ### Ganchos (lista numerada), um ### por roteiro (15s, 30s, 60s) com roteiro, texto principal, título, descrição e hipótese de teste, e ### Prompts para o Google Flow",
+};
+
+/**
+ * Prompt completo para colar em qualquer IA (ChatGPT, Claude.ai, Gemini) e trazer
+ * a resposta de volta em "Colar resposta". Mesmas regras e dados da IA integrada.
+ */
+export function manualPrompt(kind: keyof typeof MANUAL_FORMAT, k: KitContext, angles: string[] = []): string {
+  const task =
+    kind === "scripts"
+      ? `Escreva os criativos para cada um destes ângulos: ${angles.length ? angles.map((a) => `"${a}"`).join(", ") : "os 5 ângulos do plano de ataque"}. Para cada ângulo: ${TASK.scripts}`
+      : TASK[kind];
+  const payload = kind === "scripts" ? kitPayload({ ...k, plan: null }, { angulos: angles }) : kitPayload(k);
+  return [
+    DISCOVER_SYSTEM,
+    "",
+    "## Tarefa",
+    task,
+    "",
+    "## Dados (JSON)",
+    payload,
+    "",
+    "## Formato da resposta",
+    `Responda só com o conteúdo, em markdown simples (## títulos, **negrito**, listas com "- "), sem comentários antes ou depois. Estrutura: ${MANUAL_FORMAT[kind]}.`,
+  ].join("\n");
+}
+
+/** Prompt para reescrever os trechos sinalizados pelo verificador. */
+export function manualCompliancePrompt(flags: Array<{ trecho: string; regra: string; secao: string }>, k: KitContext): string {
+  return [
+    DISCOVER_SYSTEM,
+    "",
+    "## Tarefa",
+    "Estes trechos do kit foram sinalizados pelo verificador de políticas. Para cada um, explique o problema e proponha uma reescrita que mantenha a força de venda sem violar as políticas do Meta (e CONAR/ANVISA quando for saúde).",
+    "",
+    "## Dados (JSON)",
+    JSON.stringify({ ...nicheContext(k.nicheSlug, k.subnicheSlug), trechos: flags.slice(0, 40) }),
+    "",
+    "## Formato da resposta",
+    "Markdown simples: para cada trecho, \"- **Trecho:**\" com o texto original, \"Problema:\" e \"Sugestão:\".",
+  ].join("\n");
 }

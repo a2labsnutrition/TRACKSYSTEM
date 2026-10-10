@@ -53,11 +53,18 @@ export function KitRunner({ kitId, existing, hasAi, autoStart }: { kitId: string
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {!hasAi && !missing.length ? null : (
         <Button type="button" onClick={() => run(missing)} disabled={running || !missing.length}>
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           {missing.length ? `Criar tudo (${missing.length} ${missing.length > 1 ? "seções" : "seção"})` : "Kit completo"}
         </Button>
-        {!hasAi ? <span className="text-xs text-warn">Configure ANTHROPIC_API_KEY na Vercel para gerar plano, oferta, página, VSL e roteiros.</span> : null}
+        )}
+        {!hasAi ? (
+          <span className="text-xs text-muted">
+            Sem IA integrada: em cada seção, use <b>Copiar prompt</b> → cole no ChatGPT, Claude.ai ou Gemini → copie a resposta → <b>Colar resposta</b>. Faça na ordem (plano primeiro): os
+            próximos prompts levam o plano e a oferta salvos.
+          </span>
+        ) : null}
         {running ? <span className="text-xs text-muted">Pode levar alguns minutos — não feche a página.</span> : null}
       </div>
       {steps ? (

@@ -30,7 +30,7 @@ export function SectionEditor({ kitId, kind, markdown, children }: { kitId: stri
               setEditing(true);
             }}
           >
-            <Pencil className="h-3.5 w-3.5" /> {markdown ? "Editar" : "Escrever manualmente"}
+            <Pencil className="h-3.5 w-3.5" /> {markdown ? "Editar" : "Colar resposta / escrever"}
           </Button>
           {markdown ? <CopyButton text={markdown} label="Copiar texto" /> : null}
           {msg ? <span className={msg.ok ? "self-center text-xs text-good" : "self-center text-xs text-bad"}>{msg.text}</span> : null}

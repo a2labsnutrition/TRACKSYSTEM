@@ -23,6 +23,20 @@ function dataOf<T>(s: KitSection | undefined): T | string | null {
   return s ? (s.data as T | string) : null;
 }
 
+/** Contexto da IA (nicho, produto, referências, plano e oferta mais recentes). */
+export async function buildKitContext(store: DiscoverStore, kit: KitRoot, sections: KitSection[]): Promise<KitContext> {
+  const latest = latestSections(sections);
+  const allRefs = await store.listReferences();
+  return {
+    nicheSlug: kit.nicheSlug,
+    subnicheSlug: kit.subnicheSlug,
+    inputs: kit.inputs,
+    refs: allRefs.filter((r) => kit.referenceIds.includes(r.id)),
+    plan: dataOf<PlanContent>(latest.get("plan")) as KitContext["plan"],
+    offer: dataOf(latest.get("offer")) as KitContext["offer"],
+  };
+}
+
 /**
  * Gera (ou recalcula) uma seção do kit e salva como nova versão.
  * Dependências: oferta, página, VSL e roteiros usam o plano; roteiros usam os ângulos dele.
@@ -35,16 +49,7 @@ export async function generateKitSection(
   ws: Pick<Workspace, "timezone" | "taxRate" | "defaultFeeRate">,
 ): Promise<{ version: number; message: string }> {
   const latest = latestSections(sections);
-  const allRefs = await store.listReferences();
-  const refs = allRefs.filter((r) => kit.referenceIds.includes(r.id));
-  const ctx: KitContext = {
-    nicheSlug: kit.nicheSlug,
-    subnicheSlug: kit.subnicheSlug,
-    inputs: kit.inputs,
-    refs,
-    plan: dataOf<PlanContent>(latest.get("plan")) as KitContext["plan"],
-    offer: dataOf(latest.get("offer")) as KitContext["offer"],
-  };
+  const ctx = await buildKitContext(store, kit, sections);
   const needPlan = () => {
     if (!latest.get("plan")) throw new Error("Gere o plano de ataque primeiro.");
   };
