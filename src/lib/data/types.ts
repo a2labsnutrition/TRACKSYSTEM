@@ -354,6 +354,8 @@ export interface AdvisorReport {
   confidence: string | null;
   model: string;
   content: ParecerContent;
+  /** Metas gravadas no retrato do parecer (para julgar depois com a meta da época). */
+  targets?: { maxCpa: number | null; killSpendMultiple: number | null } | null;
 }
 
 export type AlertSeverity = "critico" | "atencao" | "info";

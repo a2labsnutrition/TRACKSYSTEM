@@ -27,7 +27,7 @@ Produção: https://tracksystem-eta.vercel.app — deploy automático a cada pus
 - [x] Fase 3 — Descobrir & Criar (`/descobrir`, `/kits`): nichos com score, referências/swipe, kit completo, prompt Lovable, HTML, Lançar no Tracking.
 - [x] Fase 4 — Criativos (`/criativos`) e Estúdio de PDF (`/pdf`).
 - [ ] Fase 5 — Refino (PRÓXIMO PASSO):
-  1. Comparação "parecer vs. resultado": para cada parecer salvo (`advisor_reports`), mostrar o que foi sugerido e o que aconteceu nos dias seguintes (CPA/ROAS/vendas), e medir acerto das regras.
+  1. [x] Comparação "parecer vs. resultado": `src/lib/advisor/outcome.ts` (motor puro, testes em `tests/outcome.test.ts`) + `outcomes-service.ts`; bloco "O que aconteceu depois" em cada parecer da campanha e página `/pareceres` (placar consultor x regras, IC Wilson). Acerto só quando o IC 95% do CPA nos 7 dias seguintes fica inteiro de um lado do CPA máximo gravado no parecer (`input_snapshot.metas`); otimizar/aguardar não entram no acerto. No demo há pareceres de exemplo no passado (`src/lib/data/demo/reports.ts`).
   2. Relatório semanal por e-mail (já existe envio de alertas por e-mail/Telegram em `src/lib/alerts/notify.ts`; cron só diário no Hobby → enviar quando for o dia configurado).
   3. Multi-usuário e permissões no workspace (convite por e-mail, papéis dono/editor/leitor, respeitando RLS `is_workspace_member`).
 

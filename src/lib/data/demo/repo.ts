@@ -5,6 +5,7 @@ import { demoBreakdowns, demoEntityEvents } from "./breakdowns";
 import { getMemoryStore } from "@/lib/ingest/memory-store";
 import { addDays, dateIn, todayIn } from "@/lib/tz";
 import { DEMO_PRODUCTS, demoCampaignId, generateDemo, type DemoData } from "./generator";
+import { seedDemoReports } from "./reports";
 
 const TZ = "America/Cuiaba";
 
@@ -18,6 +19,9 @@ function load() {
   }
   return cache;
 }
+/** Pareceres de exemplo no passado (recriados quando o dia muda). */
+let exampleReports: { day: string; list: AdvisorReport[] } | null = null;
+
 function data(): DemoData {
   return load().data;
 }
@@ -228,9 +232,14 @@ export class DemoRepository implements Repository {
     });
   }
 
-  async advisorReports(campaignId: string, limit = 10): Promise<AdvisorReport[]> {
-    return demoReports()
-      .filter((r) => r.campaignId === campaignId)
+  async advisorReports(campaignId?: string, limit = 10): Promise<AdvisorReport[]> {
+    const { day } = load();
+    if (exampleReports?.day !== day) {
+      const ws = (await this.context()).workspace;
+      exampleReports = { day, list: seedDemoReports(data(), DEMO_PRODUCTS, day, TZ, ws) };
+    }
+    return [...demoReports(), ...exampleReports.list]
+      .filter((r) => !campaignId || r.campaignId === campaignId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
   }

@@ -70,6 +70,10 @@ export async function createParecer(
     confidence: content.veredito.confianca,
     model,
     content,
+    targets: {
+      maxCpa: snapshot.metas.cpa_maximo_rs,
+      killSpendMultiple: snapshot.metas.cpa_maximo_rs ? (snapshot.metas.gasto_sem_venda_para_sinal_forte_rs ?? 0) / snapshot.metas.cpa_maximo_rs || null : null,
+    },
   };
 
   if (ctx.mode === "demo") {

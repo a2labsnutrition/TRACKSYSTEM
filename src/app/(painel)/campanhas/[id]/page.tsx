@@ -1,6 +1,7 @@
 import { AlertOctagon, AlertTriangle, ArrowLeft, CheckCircle2, Film, Gauge, Image as ImageIcon, Info, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { reportOutcomes } from "@/lib/advisor/outcomes-service";
 import { campaignDetail } from "@/lib/analytics";
 import { getRepository } from "@/lib/data";
 import { env } from "@/lib/env";
@@ -12,6 +13,7 @@ import { todayIn } from "@/lib/tz";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "@/components/advisor/chat-panel";
 import { GenerateParecerForm } from "@/components/advisor/generate-form";
+import { OutcomeView } from "@/components/advisor/outcome-view";
 import { ParecerView } from "@/components/advisor/parecer-view";
 import { AudienceAnalysis } from "@/components/audience-analysis";
 import { TimelineChart } from "@/components/charts/timeline-chart";
@@ -62,9 +64,10 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
   const repo = await getRepository();
   const ctx = await repo.context();
   const period = periodFrom(await searchParams, ctx.workspace.timezone);
-  const [d, reports] = await Promise.all([campaignDetail(repo, id, period), repo.advisorReports(id, 10)]);
+  const [d, reports, outcomes] = await Promise.all([campaignDetail(repo, id, period), repo.advisorReports(id, 10), reportOutcomes(repo, { campaignId: id, limit: 10 })]);
   if (!d) notFound();
   const latest = reports[0] ?? null;
+  const outcomeOf = new Map(outcomes.rows.map((r) => [r.report.id, r.outcome]));
   const periodParams: Record<string, string> = { p: period.key, ...(period.key === "custom" ? { from: period.from, to: period.to } : {}) };
   const hasAi = Boolean(env.anthropicApiKey);
   const { campaign, row, k, funnel, leak } = d;
@@ -219,16 +222,26 @@ export default async function CampanhaPage({ params, searchParams }: { params: P
         />
         <CardBody>
           {latest ? (
-            <ParecerView report={latest} tz={ctx.workspace.timezone} />
+            <>
+              {outcomeOf.get(latest.id) ? (
+                <div className="mb-5">
+                  <OutcomeView outcome={outcomeOf.get(latest.id)!} />
+                </div>
+              ) : null}
+              <ParecerView report={latest} tz={ctx.workspace.timezone} />
+            </>
           ) : (
             <p className="text-sm text-muted">Nenhum parecer ainda para esta campanha. Clique em “Gerar parecer”.</p>
           )}
           {reports.length > 1 ? (
             <details className="mt-6 rounded-lg border border-border p-3">
-              <summary className="cursor-pointer text-sm font-medium">Pareceres anteriores ({reports.length - 1})</summary>
+              <summary className="cursor-pointer text-sm font-medium">
+                Pareceres anteriores ({reports.length - 1}) · <Link href="/pareceres" className="text-primary hover:underline">acerto de todos os pareceres</Link>
+              </summary>
               <div className="mt-4 space-y-8">
                 {reports.slice(1).map((r) => (
-                  <div key={r.id} className="border-t border-border pt-4">
+                  <div key={r.id} className="space-y-4 border-t border-border pt-4">
+                    {outcomeOf.get(r.id) ? <OutcomeView outcome={outcomeOf.get(r.id)!} /> : null}
                     <ParecerView report={r} tz={ctx.workspace.timezone} />
                   </div>
                 ))}

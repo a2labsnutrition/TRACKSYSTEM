@@ -42,6 +42,14 @@ async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ da
 
 const n = (v: any) => (v == null ? 0 : Number(v));
 
+/** Metas do retrato salvo no parecer (`input_snapshot.metas`). */
+function reportTargets(m: any): AdvisorReport["targets"] {
+  const max = Number(m?.cpa_maximo_rs);
+  if (!(max > 0)) return null;
+  const kill = Number(m?.gasto_sem_venda_para_sinal_forte_rs) / max;
+  return { maxCpa: max, killSpendMultiple: kill > 0 ? Math.round(kill * 100) / 100 : null };
+}
+
 function insightFromRow(r: any): InsightDaily {
   return {
     level: r.level,
@@ -487,14 +495,13 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
-  async advisorReports(campaignId: string, limit = 10): Promise<AdvisorReport[]> {
-    const { data } = await this.db
+  async advisorReports(campaignId?: string, limit = 10): Promise<AdvisorReport[]> {
+    let q = this.db
       .from("advisor_reports")
-      .select("id, campaign_id, report_date, created_at, status, rules_status, confidence, model, content")
-      .eq("workspace_id", this.ws)
-      .eq("campaign_id", campaignId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+      .select("id, campaign_id, report_date, created_at, status, rules_status, confidence, model, content, metas:input_snapshot->metas")
+      .eq("workspace_id", this.ws);
+    if (campaignId) q = q.eq("campaign_id", campaignId);
+    const { data } = await q.order("created_at", { ascending: false }).limit(limit);
     return (data ?? []).map((r: any) => ({
       id: r.id,
       campaignId: r.campaign_id,
@@ -505,6 +512,7 @@ export class SupabaseRepository implements Repository {
       confidence: r.confidence,
       model: r.model ?? "",
       content: r.content,
+      targets: reportTargets(r.metas),
     }));
   }
 

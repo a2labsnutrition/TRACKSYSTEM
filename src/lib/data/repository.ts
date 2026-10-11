@@ -36,6 +36,7 @@ export interface Repository {
   // ---- Fase 2 ----
   breakdowns(q: { campaignId: string; from: string; to: string }): Promise<BreakdownRow[]>;
   entityEvents(q: { campaignId?: string; from: string; to: string }): Promise<EntityEvent[]>;
-  advisorReports(campaignId: string, limit?: number): Promise<AdvisorReport[]>;
+  /** Sem `campaignId`: pareceres de todas as campanhas (mais novos primeiro). */
+  advisorReports(campaignId?: string, limit?: number): Promise<AdvisorReport[]>;
   alerts(q: { status?: "open" | "all"; limit?: number }): Promise<AlertRecord[]>;
 }
