@@ -4,16 +4,22 @@ import { anomalyChecks, campaignRows } from "@/lib/analytics";
 import type { Repository } from "@/lib/data/repository";
 import { adminRepository } from "@/lib/data/supabase/context";
 import { env } from "@/lib/env";
+import { radarHotFor } from "@/lib/radar";
 import { hourIn, resolvePeriod } from "@/lib/tz";
 import { computeAlerts, severityRank, type AlertCandidate, type AlertInput } from "./engine";
 import { notifyAlerts } from "./notify";
 
-/** Monta a entrada do motor de alertas a partir do repositório. */
-export async function alertInput(repo: Repository): Promise<AlertInput> {
+/** Monta a entrada do motor de alertas a partir do repositório (`db` = service role, para ler o radar). */
+export async function alertInput(repo: Repository, db: SupabaseClient | null = null): Promise<AlertInput> {
   const ctx = await repo.context();
   const period = resolvePeriod(ctx.workspace.timezone, "7d");
   const health = await repo.health();
-  const [rows, ads, anomalies] = await Promise.all([campaignRows(repo, period, health), repo.ads(), anomalyChecks(repo, health)]);
+  const [rows, ads, anomalies, radarHot] = await Promise.all([
+    campaignRows(repo, period, health),
+    repo.ads(),
+    anomalyChecks(repo, health),
+    radarHotFor(ctx.mode, ctx.workspace, db),
+  ]);
   const tz = ctx.adAccounts[0]?.timezone ?? ctx.workspace.timezone;
   const now = new Date();
   return {
@@ -31,11 +37,12 @@ export async function alertInput(repo: Repository): Promise<AlertInput> {
     health,
     dayElapsed: (hourIn(now, tz) * 60 + now.getUTCMinutes()) / 1440,
     anomalies,
+    radarHot,
   };
 }
 
-export async function currentAlerts(repo: Repository): Promise<AlertCandidate[]> {
-  return computeAlerts(await alertInput(repo));
+export async function currentAlerts(repo: Repository, db: SupabaseClient | null = null): Promise<AlertCandidate[]> {
+  return computeAlerts(await alertInput(repo, db));
 }
 
 export interface PersistResult {
@@ -76,7 +83,7 @@ export async function runAlertsForWorkspace(db: SupabaseClient, workspaceId: str
   const repo = await adminRepository(db, workspaceId);
   if (!repo) return { opened: [], resolved: 0, notified: 0 };
   const ctx = await repo.context();
-  const candidates = await currentAlerts(repo);
+  const candidates = await currentAlerts(repo, db);
   const { opened, resolved } = await persistAlerts(db, workspaceId, candidates);
   const min = severityRank(ctx.workspace.notify.minSeverity);
   const toNotify = opened.filter((a) => severityRank(a.severity) >= min);

@@ -39,6 +39,8 @@ export interface AlertInput {
   dayElapsed: number;
   /** Verificações de anomalia (só as com status "anomalia" viram alerta). */
   anomalies?: Array<{ code: string; title: string; status: string; severity: "critico" | "atencao" | "info"; detail: string; href?: string }>;
+  /** Radar de Nichos de IA: subnichos em alta na medição mais recente. */
+  radarHot?: Array<{ slug: string; name: string; growthPct: number; viewsPerDay: number }>;
 }
 
 const SIGNAL_ALERT: Record<string, { type: string; title: string; severity?: AlertSeverity }> = {
@@ -185,6 +187,19 @@ export function computeAlerts(input: AlertInput): AlertCandidate[] {
     if (a.code === "webhook_cakto" && out.some((o) => o.type === "webhook_parado")) continue;
     if (a.code === "sync_meta" && out.some((o) => o.type === "meta_erro")) continue;
     push({ type: `anomalia_${a.code}`, severity: a.severity, entityLevel: "workspace", entityId: null, title: a.title, message: a.detail, href: a.href ?? null });
+  }
+
+  // Oportunidade (não problema): fica aberto enquanto o subnicho seguir em alta
+  for (const r of input.radarHot ?? []) {
+    push({
+      type: "radar_em_alta",
+      severity: "atencao",
+      entityLevel: "workspace",
+      entityId: `radar:${r.slug}`,
+      title: `Subnicho em alta: ${r.name}`,
+      message: `Demanda no YouTube +${Math.round(r.growthPct * 100)}% em 7 dias (${Math.round(r.viewsPerDay).toLocaleString("pt-BR")} views/dia nos vídeos recentes). Bom momento para testar ganchos com a etiqueta ia-${r.slug}.`,
+      href: `/radar-ia?s=${r.slug}`,
+    });
   }
 
   return out.sort((a, b) => order[a.severity] - order[b.severity]);

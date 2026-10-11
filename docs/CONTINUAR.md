@@ -26,6 +26,10 @@ Produção: https://tracksystem-eta.vercel.app — deploy automático a cada pus
 - [x] Fase 2 — Inteligência (breakdowns, motor de decisão, parecer, alertas, chat, anotações). Auditoria em `docs/AUDITORIA.md`.
 - [x] Fase 3 — Descobrir & Criar (`/descobrir`, `/kits`): nichos com score, referências/swipe, kit completo, prompt Lovable, HTML, Lançar no Tracking.
 - [x] Fase 4 — Criativos (`/criativos`) e Estúdio de PDF (`/pdf`).
+- [x] Radar de Nichos de IA (`/radar-ia`): `src/lib/radar/*` (catálogo de 18 subnichos, medição no YouTube, score com origem de cada parte, testes no Meta pela etiqueta `ia-<slug>`, banco de ganchos → fila de Criativos, histórico diário, alerta “subnicho em alta”). Testes em `tests/radar.test.ts`.
+  - Precisa de `YOUTUBE_API_KEY` na Vercel (YouTube Data API v3). Cron diário `/api/cron/radar-ia` (vercel.json) + mede ao abrir a página se faltar a medição do dia; medição manual com intervalo mínimo de 2 h (cota: 101 unidades por subnicho, 10.000/dia).
+  - Sem migração: tudo em `campaign_kits` com kinds `radar_ia_medicao` (1 por dia), `radar_ia_gancho` e `radar_ia_subnicho`.
+  - Etiqueta aceita `ia-chatgpt-iniciantes` (anúncio > conjunto > campanha) e o formato da fila de Criativos (`iaChatgptIniciantes`). Crescimento só depois de ~7 dias de histórico.
 - [ ] Fase 5 — Refino (PRÓXIMO PASSO):
   1. [x] Comparação "parecer vs. resultado": `src/lib/advisor/outcome.ts` (motor puro, testes em `tests/outcome.test.ts`) + `outcomes-service.ts`; bloco "O que aconteceu depois" em cada parecer da campanha e página `/pareceres` (placar consultor x regras, IC Wilson). Acerto só quando o IC 95% do CPA nos 7 dias seguintes fica inteiro de um lado do CPA máximo gravado no parecer (`input_snapshot.metas`); otimizar/aguardar não entram no acerto. No demo há pareceres de exemplo no passado (`src/lib/data/demo/reports.ts`).
   2. Relatório semanal por e-mail (já existe envio de alertas por e-mail/Telegram em `src/lib/alerts/notify.ts`; cron só diário no Hobby → enviar quando for o dia configurado).

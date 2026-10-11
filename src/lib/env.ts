@@ -26,6 +26,9 @@ export const env = {
   anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5",
 
   chromiumPath: process.env.CHROMIUM_PATH ?? "",
+
+  /** YouTube Data API v3 (Radar de Nichos de IA). Nunca vai para log nem tela. */
+  youtubeApiKey: process.env.YOUTUBE_API_KEY ?? "",
 };
 
 export function isSupabaseConfigured(): boolean {
