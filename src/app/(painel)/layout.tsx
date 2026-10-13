@@ -4,13 +4,14 @@ import { getRepository } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/env";
 import { sameOffset } from "@/lib/tz";
 import { autoSyncWorkspace, needsAutoSync } from "@/lib/integrations/meta/auto-sync";
+import { AutoRefresh } from "@/components/layout/auto-refresh";
 import { MobileNav, Sidebar } from "@/components/layout/nav";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const repo = await getRepository();
   const ctx = await repo.context();
   const tzMismatch = ctx.adAccounts.filter((a) => !sameOffset(a.timezone, ctx.workspace.timezone));
-  // Dados com mais de 1 h: sincroniza em segundo plano depois de responder
+  // Dados do Meta com mais de 15 min: sincroniza em segundo plano depois de responder
   if (ctx.mode === "live" && needsAutoSync(ctx.adAccounts)) {
     const ws = ctx.workspace.id;
     after(() => autoSyncWorkspace(ws));
@@ -29,6 +30,7 @@ export default async function PainelLayout({ children }: { children: React.React
               {ctx.userEmail ? ` · ${ctx.userEmail}` : ""}
             </p>
           </div>
+          <AutoRefresh />
           {ctx.mode === "demo" ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] font-semibold text-warn">
               <FlaskConical className="h-3.5 w-3.5" />

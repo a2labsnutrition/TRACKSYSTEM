@@ -6,13 +6,15 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { runSyncCycle } from "./sync";
 
 /**
- * Sincronização ao abrir o painel: se o último sync passou de 1 h, roda um ciclo
- * em segundo plano (depois da resposta). Mantém os dados frescos sem depender de
+ * Sincronização com o painel aberto: se o último sync passou de 15 min, roda um ciclo
+ * em segundo plano (depois da resposta). A tela se atualiza a cada 1 min, então com o
+ * painel aberto o Meta é lido a cada ~15 min — sem depender de
  * agendamento de hora em hora (indisponível no plano Hobby da Vercel).
  */
 
-const STALE_MS = 60 * 60_000;
-const COOLDOWN_MS = 10 * 60_000;
+// O Meta atualiza os números com atraso de alguns minutos; ler com mais frequência só gasta o limite de chamadas da API.
+const STALE_MS = 15 * 60_000;
+const COOLDOWN_MS = 5 * 60_000;
 const lastTrigger = new Map<string, number>();
 
 export function needsAutoSync(accounts: Array<{ lastSyncedAt: string | null }>, now = Date.now()): boolean {
