@@ -1,0 +1,42 @@
+# Sincroniza o painel a cada 15 min, mesmo com ele fechado (o plano Hobby da
+# Vercel só agenda 1x por dia). Chama a mesma rota do cron da Vercel no modo
+# "hourly": estrutura + insights de ontem/hoje do Meta, CAPI e alertas.
+#
+# Precisa do segredo CRON_SECRET (o mesmo da Vercel) em:
+#   GitHub → Settings → Secrets and variables → Actions → New repository secret
+# O repositório é público: o log mostra só o status, nunca a resposta.
+name: Sincronizar painel
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-painel
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Chamar o sync do painel
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://tracksystem-eta.vercel.app' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Cadastre o segredo CRON_SECRET em Settings > Secrets and variables > Actions (o mesmo valor da Vercel)."
+            exit 1
+          fi
+          code=$(curl -sS -o resp.json -w "%{http_code}" --max-time 90 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/meta-sync?mode=hourly") || code="erro"
+          ok=$(jq -r '.ok // "?"' resp.json 2>/dev/null || echo "?")
+          rm -f resp.json
+          echo "HTTP $code · ok=$ok"
+          if [ "$code" = "401" ]; then echo "::error::CRON_SECRET do GitHub diferente do da Vercel."; fi
+          [ "$code" = "200" ]
