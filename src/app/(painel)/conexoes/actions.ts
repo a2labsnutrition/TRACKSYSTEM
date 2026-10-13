@@ -271,12 +271,26 @@ export async function reconcileCakto(): Promise<ActionState> {
     const orders = await caktoListOrders(token, { createdFrom: addDays(today, -7), createdTo: today });
     let created = 0;
     let dup = 0;
-    for (const o of orders) {
-      const r = await ingestTrustedCaktoEvent(getIngestStore(), ctx.workspace.id, orderToWebhookBody(o as Record<string, unknown>), { "x-source": "cakto-api" });
-      if (r.body.duplicate) dup++;
-      else if (r.status === 200) created++;
+    let processed = 0;
+    // Para antes do limite da função (a tela daria erro); o que faltar entra na próxima conciliação.
+    const deadline = Date.now() + 200_000;
+    const store = getIngestStore();
+    for (let i = 0; i < orders.length && Date.now() < deadline; i += 5) {
+      const batch = orders.slice(i, i + 5);
+      const rs = await Promise.all(
+        batch.map((o) => ingestTrustedCaktoEvent(store, ctx.workspace.id, orderToWebhookBody(o as Record<string, unknown>), { "x-source": "cakto-api" }).catch(() => null)),
+      );
+      for (const r of rs) {
+        processed++;
+        if (r?.body.duplicate) dup++;
+        else if (r?.status === 200) created++;
+      }
     }
-    return done(`${orders.length} pedido(s) lidos da API: ${created} novo(s)/atualizado(s), ${dup} já estavam registrados.`);
+    const rest = orders.length - processed;
+    return done(
+      `${orders.length} pedido(s) lidos da API: ${created} novo(s)/atualizado(s), ${dup} já estavam registrados.` +
+        (rest > 0 ? ` Faltaram ${rest} por tempo — clique em “Conciliar 7 dias” de novo para continuar.` : ""),
+    );
   } catch (e) {
     return fail(e);
   }

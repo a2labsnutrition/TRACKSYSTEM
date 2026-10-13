@@ -35,7 +35,8 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Conexões" };
-export const maxDuration = 60;
+// A conciliação com a Cakto pode ler centenas de pedidos.
+export const maxDuration = 300;
 
 const UTM_TEMPLATE =
   "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}|{{campaign.id}}&utm_term={{adset.name}}|{{adset.id}}&utm_content={{ad.name}}|{{ad.id}}";
