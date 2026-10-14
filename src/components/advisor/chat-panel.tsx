@@ -17,8 +17,28 @@ const SUGGESTIONS = [
   "Que público está queimando dinheiro?",
 ];
 
-/** "Perguntar ao consultor": chat com todos os dados desta campanha. */
-export function ChatPanel({ campaignId, period, enabled }: { campaignId: string; period: Record<string, string>; enabled: boolean }) {
+/** "Perguntar ao consultor": chat com todos os dados desta campanha (ou da conta, no Claudinho). */
+export function ChatPanel({
+  campaignId,
+  period,
+  enabled,
+  endpoint = "/api/advisor/chat",
+  title = "Perguntar ao consultor",
+  subtitle = "Responde com os dados desta campanha",
+  placeholder = "Pergunte sobre esta campanha…",
+  suggestions = SUGGESTIONS,
+  buttonVariant = "secondary",
+}: {
+  campaignId?: string;
+  period?: Record<string, string>;
+  enabled: boolean;
+  endpoint?: string;
+  title?: string;
+  subtitle?: string;
+  placeholder?: string;
+  suggestions?: string[];
+  buttonVariant?: "primary" | "secondary";
+}) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -33,7 +53,7 @@ export function ChatPanel({ campaignId, period, enabled }: { campaignId: string;
     setInput("");
     setBusy(true);
     try {
-      const res = await fetch("/api/advisor/chat", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ campaignId, period, messages: next.slice(-20) }),
@@ -62,8 +82,8 @@ export function ChatPanel({ campaignId, period, enabled }: { campaignId: string;
 
   return (
     <>
-      <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        <MessageSquare className="h-3.5 w-3.5" /> Perguntar ao consultor
+      <Button type="button" variant={buttonVariant} size="sm" onClick={() => setOpen(true)}>
+        <MessageSquare className="h-3.5 w-3.5" /> {title}
       </Button>
       {open ? (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -71,8 +91,8 @@ export function ChatPanel({ campaignId, period, enabled }: { campaignId: string;
           <div className="relative flex h-full w-full max-w-md flex-col border-l border-border bg-panel">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
-                <p className="text-sm font-semibold">Perguntar ao consultor</p>
-                <p className="text-[11px] text-faint">Responde com os dados desta campanha</p>
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="text-[11px] text-faint">{subtitle}</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-muted hover:text-text" aria-label="Fechar">
                 <X className="h-5 w-5" />
@@ -85,7 +105,7 @@ export function ChatPanel({ campaignId, period, enabled }: { campaignId: string;
               {!msgs.length && enabled ? (
                 <div className="space-y-2">
                   <p className="text-xs text-muted">Sugestões:</p>
-                  {SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button key={s} type="button" onClick={() => send(s)} className="block w-full rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-panel-2">
                       {s}
                     </button>
@@ -110,7 +130,7 @@ export function ChatPanel({ campaignId, period, enabled }: { campaignId: string;
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 disabled={!enabled || busy}
-                placeholder="Pergunte sobre esta campanha…"
+                placeholder={placeholder}
                 className="h-9 min-w-0 flex-1 rounded-lg border border-border-strong bg-bg px-3 text-sm focus:border-primary focus:outline-none"
                 maxLength={4000}
               />

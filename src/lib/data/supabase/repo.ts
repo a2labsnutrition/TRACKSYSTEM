@@ -500,7 +500,8 @@ export class SupabaseRepository implements Repository {
       .from("advisor_reports")
       .select("id, campaign_id, report_date, created_at, status, rules_status, confidence, model, content, metas:input_snapshot->metas")
       .eq("workspace_id", this.ws);
-    if (campaignId) q = q.eq("campaign_id", campaignId);
+    // Planos do Claudinho ficam na mesma tabela, mas não são pareceres de campanha
+    q = campaignId ? q.eq("campaign_id", campaignId) : q.neq("campaign_id", "__claudinho__");
     const { data } = await q.order("created_at", { ascending: false }).limit(limit);
     return (data ?? []).map((r: any) => ({
       id: r.id,

@@ -3,6 +3,7 @@
 import {
   Activity,
   Bell,
+  Bot,
   BarChart3,
   CalendarDays,
   Compass,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 const MAIN = [
   { href: "/", label: "Visão geral", icon: LayoutDashboard },
+  { href: "/claudinho", label: "Claudinho (estrategista)", icon: Bot },
   { href: "/gasto-diario", label: "Gasto por dia", icon: CalendarDays },
   { href: "/campanhas", label: "Campanhas", icon: Megaphone },
   { href: "/vendas", label: "Vendas", icon: Receipt },
