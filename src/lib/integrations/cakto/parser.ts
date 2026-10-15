@@ -247,9 +247,11 @@ export function parseCaktoWebhook(body: unknown): ParsedCaktoEvent {
   const grossAmount = num(pick(data, ["amount", "baseAmount", "base_amount", "total", "value", "price", "order.amount", "offer.price"])) ?? 0;
   const fees = num(pick(data, ["fees", "fee", "gateway_fee", "taxes", "platform_fee"]));
   let netAmount = num(pick(data, ["netAmount", "net_amount", "liquid_amount", "producer_amount", "commission", "producerCommission"]));
+  // O que o produtor recebe de fato (é o "líquido" do painel da Cakto): commissions[type=producer].commissionValue.
+  // Tipo exato: "coproducer" também contém "producer".
   if (netAmount == null && Array.isArray(data.commissions)) {
-    const producer = (data.commissions as Json[]).find((c) => /producer|produtor/i.test(String(c.type ?? c.role ?? "")));
-    netAmount = num(producer?.totalAmount ?? producer?.amount ?? producer?.value);
+    const producer = (data.commissions as Json[]).find((c) => /^(producer|produtor)$/i.test(String(c.type ?? c.role ?? "").trim()));
+    netAmount = num(producer?.commissionValue ?? producer?.commission_value ?? producer?.totalAmount ?? producer?.amount ?? producer?.value);
   }
   if (netAmount == null && fees != null) netAmount = Math.max(0, grossAmount - fees);
   if (netAmount == null) warnings.push("Valor líquido não informado: será estimado com a taxa padrão do workspace");
@@ -295,10 +297,11 @@ export function parseCaktoWebhook(body: unknown): ParsedCaktoEvent {
       (eventName.startsWith("pix") ? "pix" : eventName.startsWith("boleto") ? "boleto" : undefined),
   );
 
-  // Idempotência: evento + pedido + status. Sem ID de pedido (ex.: abandono),
+  // Idempotência: evento + pedido + status + líquido (um líquido corrigido reprocessa
+  // o pedido; ele é gravado pelo ID, sem duplicar). Sem ID de pedido (ex.: abandono),
   // usa e-mail + URL + data.
   const keyBase = orderExternalId
-    ? `${eventName}|${orderExternalId}|${status}`
+    ? `${eventName}|${orderExternalId}|${status}|${netAmount ?? ""}`
     : `${eventName}|${customerEmail ?? ""}|${checkoutUrl ?? ""}|${createdAt ?? ""}|${grossAmount}`;
   const explicitId = str(pick(root, ["id", "event_id", "webhook_id"]));
   const dedupeKey = sha256(explicitId && explicitId !== orderExternalId ? `evt|${explicitId}` : keyBase);
