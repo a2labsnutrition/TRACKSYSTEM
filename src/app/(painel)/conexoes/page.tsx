@@ -23,6 +23,7 @@ import {
   activateAdAccounts,
   createSite,
   reconcileCakto,
+  reconcileCakto30,
   reprocessFailedCakto,
   saveCaktoApi,
   saveCaktoSecret,
@@ -447,6 +448,7 @@ export default async function Conexoes({ searchParams }: { searchParams: SearchP
                     </ActionForm>
                     <div className="mt-3">
                       <ActionButton action={reconcileCakto} label="Conciliar 7 dias" disabled={!caktoApiConfigured} />
+                      <ActionButton action={reconcileCakto30} label="Conciliar 30 dias" disabled={!caktoApiConfigured} />
                     </div>
                   </>
                 ) : null}

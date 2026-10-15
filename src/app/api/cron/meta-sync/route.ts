@@ -1,13 +1,15 @@
 import { env, isServiceRoleConfigured } from "@/lib/env";
 import { safeEqual } from "@/lib/crypto";
 import { runAlertsForWorkspace } from "@/lib/alerts/run";
+import { getIngestStore } from "@/lib/ingest";
+import { reconcileCaktoWorkspace } from "@/lib/ingest/cakto-reconcile";
 import { retryFailedCapi } from "@/lib/ingest/capi-retry";
 import { runSyncCycle } from "@/lib/integrations/meta/sync";
 import { log } from "@/lib/log";
 import { syncFxRates } from "@/lib/money/fx-sync";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Chamado pelo Vercel Cron (Authorization: Bearer CRON_SECRET).
@@ -42,8 +44,22 @@ export async function GET(req: Request) {
         alerts[ws] = { erro: (e as Error).message };
       }
     }
+    // Conciliação com a API da Cakto: recupera vendas, Pix pagos e order bumps que o webhook não entregou
+    const cakto: Record<string, unknown> = {};
+    const { data: wsRows } = await db.from("workspaces").select("id, timezone");
+    for (const w of wsRows ?? []) {
+      try {
+        const rc = await reconcileCaktoWorkspace(db, getIngestStore(), w.id as string, (w.timezone as string) || "America/Sao_Paulo", {
+          days: mode === "daily" ? 7 : 2,
+          deadlineMs: 12_000,
+        });
+        if (rc) cakto[w.id as string] = { lidos: rc.read, novos: rc.created };
+      } catch (e) {
+        cakto[w.id as string] = { erro: (e as Error).message };
+      }
+    }
     log.info("cron.meta_sync", { mode, errors: r.errors.length, fxOk: fx.ok });
-    return Response.json({ ok: r.errors.length === 0, mode, fx, capi, alerts, ...r, logs: r.logs.filter((l) => !l.ok) });
+    return Response.json({ ok: r.errors.length === 0, mode, fx, capi, alerts, cakto, ...r, logs: r.logs.filter((l) => !l.ok) });
   } catch (e) {
     log.error("cron.meta_sync_failed", { mode, error: e });
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });

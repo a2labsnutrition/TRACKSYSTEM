@@ -15,6 +15,7 @@ export function FinancialBreakdown({ fin, spendEstimated, undetermined }: { fin:
     { label: "Upsells", value: fin.upsellRevenue, sub: `${fmtInt(fin.upsellOrders)} venda(s)` },
     { label: "Reembolsos e chargebacks", value: fin.refunds, sign: "−", sub: `${fmtInt(fin.refundCount)} pedido(s)` },
     { label: "Taxas da Cakto", value: fin.fees, sign: "−", sub: fin.feesEstimatedShare > 0 ? `estimadas (taxa padrão) em pedidos que somam ${fmtPct(fin.feesEstimatedShare, 0)} do faturamento` : "informadas pela Cakto" },
+    { label: "= Líquido Cakto", value: fin.revenueAfterRefunds - fin.fees, strong: true, sub: "o mesmo que a Cakto mostra como receita líquida" },
     { label: "Impostos", value: fin.taxes, sign: "−" },
     { label: "Custos variáveis do produto", value: fin.variableCosts, sign: "−", sub: fin.costsConfigured ? undefined : "há produto sem custo configurado" },
     { label: "Gasto com anúncios", value: fin.adSpend, sign: "−", sub: spendEstimated ? "convertido de outra moeda (estimado)" : undefined },

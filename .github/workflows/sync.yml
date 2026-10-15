@@ -32,7 +32,7 @@ jobs:
             echo "::error::Cadastre o segredo CRON_SECRET em Settings > Secrets and variables > Actions (o mesmo valor da Vercel)."
             exit 1
           fi
-          code=$(curl -sS -o resp.json -w "%{http_code}" --max-time 90 \
+          code=$(curl -sS -o resp.json -w "%{http_code}" --max-time 150 \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/cron/meta-sync?mode=hourly") || code="erro"
           ok=$(jq -r '.ok // "?"' resp.json 2>/dev/null || echo "?")

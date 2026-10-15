@@ -7,14 +7,14 @@ import { isMetaAppConfigured } from "@/lib/env";
 import { randomId } from "@/lib/utils";
 import { getIngestStore, DEMO_SITE_KEY } from "@/lib/ingest";
 import { dispatchCapi } from "@/lib/ingest/capi-dispatch";
-import { ingestTrustedCaktoEvent, processCaktoWebhook, reprocessStoredCaktoEvent } from "@/lib/ingest/cakto-webhook";
-import { caktoListOrders, caktoToken, orderToWebhookBody } from "@/lib/integrations/cakto/api";
+import { processCaktoWebhook, reprocessStoredCaktoEvent } from "@/lib/ingest/cakto-webhook";
+import { caktoToken } from "@/lib/integrations/cakto/api";
+import { reconcileCaktoWorkspace } from "@/lib/ingest/cakto-reconcile";
 import { MetaApiError } from "@/lib/integrations/meta/client";
 import { debugToken, listAdAccounts, ACCOUNT_STATUS } from "@/lib/integrations/meta/oauth";
 import { enqueueBackfill, runSyncCycle, type AccountRow } from "@/lib/integrations/meta/sync";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { verifyInstallation, type VerifyResult } from "@/lib/tracking/verify";
-import { addDays, todayIn } from "@/lib/tz";
 
 export interface ActionState {
   ok: boolean;
@@ -260,40 +260,26 @@ export async function saveCaktoApi(_: ActionState, form: FormData): Promise<Acti
   }
 }
 
-export async function reconcileCakto(): Promise<ActionState> {
+async function reconcile(days: number): Promise<ActionState> {
   try {
     const { ctx } = await requireLiveWorkspace();
-    const cred = await readCredential(supabaseAdmin(), ctx.workspace.id, "cakto_api");
-    if (!cred) return { ok: false, message: "Conecte a API da Cakto (opcional) para conciliar." };
-    const c = JSON.parse(cred.secret) as { clientId: string; clientSecret: string };
-    const token = await caktoToken(c);
-    const today = todayIn(ctx.workspace.timezone);
-    const orders = await caktoListOrders(token, { createdFrom: addDays(today, -7), createdTo: today });
-    let created = 0;
-    let dup = 0;
-    let processed = 0;
-    // Para antes do limite da função (a tela daria erro); o que faltar entra na próxima conciliação.
-    const deadline = Date.now() + 200_000;
-    const store = getIngestStore();
-    for (let i = 0; i < orders.length && Date.now() < deadline; i += 5) {
-      const batch = orders.slice(i, i + 5);
-      const rs = await Promise.all(
-        batch.map((o) => ingestTrustedCaktoEvent(store, ctx.workspace.id, orderToWebhookBody(o as Record<string, unknown>), { "x-source": "cakto-api" }).catch(() => null)),
-      );
-      for (const r of rs) {
-        processed++;
-        if (r?.body.duplicate) dup++;
-        else if (r?.status === 200) created++;
-      }
-    }
-    const rest = orders.length - processed;
+    const r = await reconcileCaktoWorkspace(supabaseAdmin(), getIngestStore(), ctx.workspace.id, ctx.workspace.timezone, { days });
+    if (!r) return { ok: false, message: "Conecte a API da Cakto (opcional) para conciliar." };
     return done(
-      `${orders.length} pedido(s) lidos da API: ${created} novo(s)/atualizado(s), ${dup} já estavam registrados.` +
-        (rest > 0 ? ` Faltaram ${rest} por tempo — clique em “Conciliar 7 dias” de novo para continuar.` : ""),
+      `${r.read} pedido(s) lidos da API (${days} dias): ${r.created} novo(s)/atualizado(s), ${r.duplicates} já estavam registrados.` +
+        (r.rest > 0 ? ` Faltaram ${r.rest} por tempo — clique de novo para continuar.` : ""),
     );
   } catch (e) {
     return fail(e);
   }
+}
+
+export async function reconcileCakto(): Promise<ActionState> {
+  return reconcile(7);
+}
+
+export async function reconcileCakto30(): Promise<ActionState> {
+  return reconcile(30);
 }
 
 export async function reprocessFailedCakto(): Promise<ActionState> {

@@ -75,7 +75,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Stat
           label="Gasto"
           metric="spend"
@@ -95,12 +95,20 @@ export default async function VisaoGeral({ searchParams }: { searchParams: Searc
           sub={cur.fin.bumpRevenue || cur.fin.upsellRevenue ? `bumps/upsells ${fmtBRL(cur.fin.bumpRevenue + cur.fin.upsellRevenue)}` : `− tráfego: ${fmtBRL(cur.fin.grossMinusAds)}`}
         />
         <Stat
-          label="Lucro de contribuição"
+          label="Líquido Cakto"
+          value={fmtBRL(cur.fin.revenueAfterRefunds - cur.fin.fees)}
+          current={cur.fin.revenueAfterRefunds - cur.fin.fees}
+          previous={prev.fin.revenueAfterRefunds - prev.fin.fees}
+          sub="o que a Cakto paga (vendas pagas − taxa Cakto)"
+          className="border-primary/30"
+        />
+        <Stat
+          label="Sobra (líquido − anúncios)"
           metric="profit"
           value={fmtBRL(cur.fin.contribution)}
           current={cur.fin.contribution}
           previous={prev.fin.contribution}
-          sub="estimado · sem custos fixos"
+          sub={cur.fin.taxes || cur.fin.variableCosts ? "também desconta impostos/custos configurados" : "Líquido Cakto − gasto com anúncios"}
           className={cur.fin.contribution < 0 ? "border-bad/40" : cur.fin.contribution > 0 ? "border-good/30" : ""}
         />
         <Stat label="ROAS bruto" metric="roasReal" value={fmtRoas(cur.fin.roasGross)} current={cur.fin.roasGross} previous={prev.fin.roasGross} sub={`Meta: ${fmtRoas(cur.derived.roasMeta)}`} />
